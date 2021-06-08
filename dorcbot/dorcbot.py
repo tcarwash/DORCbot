@@ -28,7 +28,16 @@ async def on_ready():
 @client.event
 async def on_message(message):
     if message.content.startswith('!spots'):
-        spots = get_spots()
-        await message.channel.send(spots)
+        payload = get_spots()
+        await message.channel.send(payload)
+
+    if message.content.startswith('!help'):
+        payload ="""
+        Usage:
+            
+            !spots --  Get the 3 most recent spots of DORC members
+
+        """
+        await message.channel.send(payload)
 
 client.run(TOKEN)
