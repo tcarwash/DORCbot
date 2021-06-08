@@ -34,7 +34,7 @@ async def on_message(message):
     if message.content.startswith('!help'):
         payload ="""
         Usage:
-            
+            !help --  Display this message 
             !spots --  Get the 3 most recent spots of DORC members
 
         """
