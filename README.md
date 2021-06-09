@@ -10,7 +10,7 @@ To run DORCbot you will need to have completed all the steps to create an app an
 ### Docker and Docker-Compose
 1. Create a file `dorcbot/.env` with the entry `TOKEN={Discord Bot Token}`
 2. run `docker-compose build`
-3. start container with `docker-compose up` or `docker-compose up -d` for detachedu
+3. start container with `docker-compose up` or `docker-compose up -d` for detached
 
 ### Python, No Docker
 1. Create a file `.env` with the entry `TOKEN={Discord Bot Token}`
