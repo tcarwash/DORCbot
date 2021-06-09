@@ -89,5 +89,5 @@ async def on_message(message):
         #  if client.user.mentioned_in(message)
         # payload = "Only ! commands are supported. Ask for !help instead."
 
-
-client.run(TOKEN)
+if __name__ == "__main__":
+    client.run(TOKEN)
