@@ -12,6 +12,8 @@ TOKEN = os.environ.get('TOKEN')
 
 client = discord.Client()
 
+codeblock = "```"
+
 
 def get_spots():
     spots = requests.get('https://dorc-stats.ag7su.com/data/3').json()
@@ -21,7 +23,7 @@ def get_spots():
     for spot in spots:
         row = [spot['callsign'], spot['frequency'], spot['mode'], spot['time']]
         tab.append(row)
-    spots = payload + tabulate(tab, header)
+    spots = codeblock + payload + tabulate(tab, header) + codeblock
     return spots
 
 
@@ -31,13 +33,13 @@ def get_solar():
     tree = ElementTree.fromstring(solarcontent.content).find("./solardata")
     tab = []
     # Goofy spacing in the header because I don't know how to send fixed-width messages yet.
-    header = ['As of               ', '     A  ', '     K  ', '     SFI ']
+    header = ['As of', 'A', 'K', 'SFI']
     row = [tree.find("./updated").text,
            tree.find("./aindex").text,
            tree.find("./kindex").text,
            tree.find("./solarflux").text]
     tab.append(row)
-    solar = payload + tabulate(tab, header)
+    solar = codeblock + payload + tabulate(tab, header) + codeblock
     return solar
 
 
