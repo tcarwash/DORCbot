@@ -14,18 +14,18 @@ client = discord.Client()
 
 
 class Payload:
-    def __init__(self, fmt='code', content='', delete_after=120):
+    def __init__(self, fmt='codeblock', content='', delete_after=120):
         self.fmt = fmt
         self.content = content
         self.arg_dict = {'content': self.content, 
                         'delete_after': delete_after}
 
-    def block(self, content):
+    def codeblock(self, content):
         return f"```{content}```"
 
     def send(self):
-        if self.fmt == 'code':
-            self.content = self.block(self.content)
+        if self.fmt == 'codeblock':
+            self.content = self.codeblock(self.content)
             self.arg_dict['content'] = self.content
 
         return self.arg_dict
