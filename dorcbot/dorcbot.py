@@ -13,41 +13,58 @@ TOKEN = os.environ.get('TOKEN')
 client = discord.Client()
 
 
-def get_spots():
+class Payload:
+    def __init__(self, fmt='code', content='', delete_after=120):
+        self.fmt = fmt
+        self.content = content
+        self.arg_dict = {'content': self.content, 
+                        'delete_after': delete_after}
+
+    def block(self, content):
+        return f"```{content}```"
+
+    def send(self):
+        if self.fmt == 'code':
+            self.content = self.block(self.content)
+            self.arg_dict['content'] = self.content
+
+        return self.arg_dict
+                
+
+def get_spots(payload):
     spots = requests.get('https://dorc-stats.ag7su.com/data/3').json()
-    payload = "Most recently spotted DORCs:\n\n"
+    payload.content = "Most recently spotted DORCs:\n\n"
     tab = []
     header = ['Call', 'freq.', 'mode', 'time']
     for spot in spots:
         row = [spot['callsign'], spot['frequency'], spot['mode'], spot['time']]
         tab.append(row)
-    spots = payload + tabulate(tab, header)
-    return spots
+    payload.content = payload.content + tabulate(tab, header)
+    return payload
 
 
-def get_solar():
-    payload = "Solar Indices:\n\n"
+def get_solar(payload):
+    payload.content = "Solar Indices:\n\n"
     solarcontent = requests.get('https://joshmathis.com/dorc/solarxml.xml')
     tree = ElementTree.fromstring(solarcontent.content).find("./solardata")
     tab = []
-    # Goofy spacing in the header because I don't know how to send fixed-width messages yet.
-    header = ['As of               ', '     A  ', '     K  ', '     SFI ']
+    header = ['As of', 'A', 'K', 'SFI']
     row = [tree.find("./updated").text,
            tree.find("./aindex").text,
            tree.find("./kindex").text,
            tree.find("./solarflux").text]
     tab.append(row)
-    solar = payload + tabulate(tab, header)
-    return solar
+    payload.content = payload.content + tabulate(tab, header)
+    return payload 
 
 
-def get_help():
+def get_help(payload):
     # Dynamically create help based on the defined commands (commandmap)
-    payload = "Usage: "
+    payload.content = "Usage: "
     for key in commandmap.keys():
         command = "\n\t" + key + " -- " + commandmap.get(key)[1]
-        payload += command
-    return payload
+        payload.content += command
+    return payload 
 
 
 # Add commands here. Format:
@@ -72,15 +89,15 @@ async def on_message(message):
     isBang = False
     if message.content.startswith('!'):
         command = re.match(r"[^\s]+", message.content).string
-
+        payload = Payload()
         func = commandmap.get(command)
         if func is None:
-            payload = "Unsupported command. Try asking for !help instead."
+            payload.content = "Unsupported command. Try asking for !help instead."
 
         else:
-            payload = func[0]()
+            payload = func[0](payload)
 
-        await message.channel.send(payload)
+        await message.channel.send(**payload.send())
 
     else:
         return
