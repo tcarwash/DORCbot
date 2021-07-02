@@ -5,6 +5,7 @@ import requests
 from dotenv import load_dotenv
 from tabulate import tabulate
 from xml.etree import ElementTree
+import asyncio
 
 load_dotenv()
 
@@ -22,7 +23,7 @@ class Payload:
 
     def to_dict(self):
         # List of attributes not to send to Discord
-        keep = ['content', 'delete_after', 'tts', 
+        keep = ['content', 'tts', 
                 'embed', 'file', 'files', 'nonce', 
                 'allowed_mentions', 'reference', 'mention_author']
 
@@ -107,12 +108,18 @@ async def on_message(message):
         func = commandmap.get(command)
         if func is None:
             payload.content = "Unsupported command. Try asking for !help instead."
-
         else:
             payload = func[0](payload)
+        outgoing = await message.channel.send(**payload.send())
 
-        await message.channel.send(**payload.send())
-        await message.delete(delay=payload.delete_after)
+        def check(m):
+            return m.content == payload.content and m.channel == channel
+
+        try:
+            await client.wait_for('reaction_add', timeout = payload.delete_after)
+        except asyncio.TimeoutError:
+            await outgoing.delete()
+            await message.delete()
 
     else:
         return
