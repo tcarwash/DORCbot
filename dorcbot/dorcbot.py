@@ -14,21 +14,35 @@ client = discord.Client()
 
 
 class Payload:
-    def __init__(self, fmt='codeblock', content='', delete_after=120):
+    def __init__(self, fmt='codeblock', content='', delete_after=60):
         self.fmt = fmt
         self.content = content
-        self.arg_dict = {'content': self.content, 
-                        'delete_after': delete_after}
+        self.delete_after = delete_after
 
-    def codeblock(self, content):
-        return f"```{content}```"
+
+    def to_dict(self):
+        # List of attributes not to send to Discord
+        keep = ['content', 'delete_after', 'tts', 
+                'embed', 'file', 'files', 'nonce', 
+                'allowed_mentions', 'reference', 'mention_author']
+
+        arg_dict = {k: self.__dict__[k] for k in keep if k in self.__dict__} 
+
+        return arg_dict
+
+
+    def format_block(self):
+        if self.fmt == 'codeblock':
+            self.content = f"```{self.content}```"
+
+        return True
+
 
     def send(self):
-        if self.fmt == 'codeblock':
-            self.content = self.codeblock(self.content)
-            self.arg_dict['content'] = self.content
+        self.format_block()
+        arg_dict = self.to_dict()
 
-        return self.arg_dict
+        return arg_dict
                 
 
 def get_spots(payload):
@@ -98,6 +112,7 @@ async def on_message(message):
             payload = func[0](payload)
 
         await message.channel.send(**payload.send())
+        await message.delete(delay=payload.delete_after)
 
     else:
         return
