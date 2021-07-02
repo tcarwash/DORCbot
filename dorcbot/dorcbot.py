@@ -47,7 +47,7 @@ class Payload:
                 
 
 def get_spots(payload):
-    spots = requests.get('https://dorc-stats.ag7su.com/data/3').json()
+    spots = requests.get('https://dorc-stats.ag7su.com/data/5').json()
     payload.content = "Most recently spotted DORCs:\n\n"
     tab = []
     header = ['Call', 'freq.', 'mode', 'time']
@@ -85,7 +85,7 @@ def get_help(payload):
 # Add commands here. Format:
 #    '!command': [function_to_create_final_output], "Help text"
 commandmap = {
-    '!spots': [get_spots, "Get the 3 most recent spots of DORC members"],
+    '!spots': [get_spots, "Get the 5 most recent spots of DORC members"],
     '!solar': [get_solar, "Get solar conditions"],
     '!help': [get_help, "Get the thing you're reading now"]
 }
@@ -103,13 +103,14 @@ async def on_message(message):
 
     isBang = False
     if message.content.startswith('!'):
-        command = re.match(r"[^\s]+", message.content).string
-        payload = Payload()
-        func = commandmap.get(command)
-        if func is None:
-            payload.content = "Unsupported command. Try asking for !help instead."
-        else:
-            payload = func[0](payload)
+        async with message.channel.typing():
+            command = re.match(r"[^\s]+", message.content).string
+            payload = Payload()
+            func = commandmap.get(command)
+            if func is None:
+                payload.content = "Unsupported command. Try asking for !help instead."
+            else:
+                payload = func[0](payload)
         outgoing = await message.channel.send(**payload.send())
 
         def check(m):
