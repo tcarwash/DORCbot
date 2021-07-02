@@ -113,11 +113,15 @@ async def on_message(message):
                 payload = func[0](payload)
         outgoing = await message.channel.send(**payload.send())
 
-        def check(m):
-            return m.content == payload.content and m.channel == channel
+        def wrapper(outgoing):
+            def check(reaction, user):
+                return reaction.message.id == outgoing.id
+            return check
+
+        check = wrapper(outgoing)
 
         try:
-            await client.wait_for('reaction_add', timeout = payload.delete_after)
+            await client.wait_for('reaction_add', timeout=payload.delete_after, check=check)
         except asyncio.TimeoutError:
             await outgoing.delete()
             await message.delete()
