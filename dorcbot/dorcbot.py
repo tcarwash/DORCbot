@@ -114,6 +114,7 @@ def get_calldata(payload, callsign, *args):
         payload.content += f"Callsign: {data['call']} [ Aliases: {data.get('aliases')} ]\n"
         payload.content += f"Name: {data['fname']} {data['name']}\n"
         payload.content += f"Country: {data['country']}\n"
+        payload.content += f"State: {data.get('state')}\n"
         payload.content += f"Grid: {data['grid']}"
     else:    
         payload = error("Check callsign")
