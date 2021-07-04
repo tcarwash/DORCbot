@@ -47,6 +47,16 @@ class Payload:
 
         return arg_dict
 
+
+def error(description):
+    payload = Payload(fmt = '')
+    payload.embed=discord.Embed(color=0xFF5733, title='Error:')
+    payload.embed.description = description
+    payload.embed.set_thumbnail(url='https://c.tenor.com/OxvVRFnPZO8AAAAM/error-the-simpsons.gif')
+
+    return payload
+
+
 def calldata(callsign):
     callsign = callsign.split(';')[0]
     pref = '{http://xmldata.qrz.com}'
@@ -92,7 +102,7 @@ def get_dxcc(payload, query, *args):
         payload.content += f"CQ Zone: {data.get('cqzone')}\n"
         payload.content += f"Time Zone: {data.get('timezone')}"
     else:
-        payload.content = "Error"
+        payload = error(f"API returned no result for dxcc matching: {query.upper()}")
 
     return payload
 
@@ -106,7 +116,7 @@ def get_calldata(payload, callsign, *args):
         payload.content += f"Country: {data['country']}\n"
         payload.content += f"Grid: {data['grid']}"
     else:    
-        payload.content = "Check callsign"
+        payload = error("Check callsign")
         
     return payload
 
@@ -115,10 +125,13 @@ def get_spots(payload, *args):
     payload.content = "Most recently spotted DORCs:\n\n"
     tab = []
     header = ['Call', 'freq.', 'mode', 'time']
-    for spot in spots:
-        row = [spot['callsign'], spot['frequency'], spot['mode'], spot['time']]
-        tab.append(row)
-    payload.content = payload.content + tabulate(tab, header)
+    if spots[0].get('callsign'):
+        for spot in spots:
+            row = [spot['callsign'], spot['frequency'], spot['mode'], spot['time']]
+            tab.append(row)
+        payload.content = payload.content + tabulate(tab, header)
+    else:
+        payload = error("API returned no records")
     
     return payload
 
