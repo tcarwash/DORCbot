@@ -57,9 +57,45 @@ def calldata(callsign):
     if data:
         calldata = {x.tag.split('}')[1]: x.text for x in data}
     else:
+
         return None
 
     return calldata 
+
+
+def dxcc(query):
+    query = query.split(';')[0].upper() # allow one parameter only
+    pref = '{http://xmldata.qrz.com}'
+    login = requests.get(f'https://xmldata.qrz.com/xml/current/?username={QRZ_API_USER};password={QRZ_API_PASS};agent=q5.0')
+
+    key = ElementTree.fromstring(login.content)[0][0].text
+    resp = ElementTree.fromstring(requests.get(f'https://xmldata.qrz.com/xml/current/?s={key};dxcc={query}').content)
+    data = resp.find(pref + 'DXCC')
+    if data:
+        dxcc = {x.tag.split('}')[1]: x.text for x in data}
+    else:
+
+        return None
+
+    return dxcc 
+
+
+def get_dxcc(payload, query, *args):
+    data = dxcc(query.split()[0])
+    if data:
+        payload.content = f"DXCC Data for {query}\n\n"
+        payload.content += f"DXCC Number: {data.get('dxcc')}\n"
+        payload.content += f"Country: {data.get('name')}\n"
+        payload.content += f"CC: {data.get('cc')}\n"
+        payload.content += f"Continent: {data.get('continent')}\n"
+        payload.content += f"ITU Zone: {data.get('ituzone')}\n"
+        payload.content += f"CQ Zone: {data.get('cqzone')}\n"
+        payload.content += f"Time Zone: {data.get('timezone')}"
+    else:
+        payload.content = "Error"
+
+    return payload
+
 
 def get_calldata(payload, callsign, *args):
     data = calldata(callsign.split()[0])
@@ -71,7 +107,7 @@ def get_calldata(payload, callsign, *args):
         payload.content += f"Grid: {data['grid']}"
     else:    
         payload.content = "Check callsign"
-        return payload
+        
     return payload
 
 def get_spots(payload, *args):
@@ -83,6 +119,7 @@ def get_spots(payload, *args):
         row = [spot['callsign'], spot['frequency'], spot['mode'], spot['time']]
         tab.append(row)
     payload.content = payload.content + tabulate(tab, header)
+    
     return payload
 
 
@@ -98,6 +135,7 @@ def get_solar(payload, *args):
            tree.find("./solarflux").text]
     tab.append(row)
     payload.content = payload.content + tabulate(tab, header)
+
     return payload 
 
 
@@ -107,6 +145,7 @@ def get_help(payload, *args):
     for key in commandmap.keys():
         command = "\n\t" + key + " -- " + commandmap.get(key)[1]
         payload.content += command
+
     return payload 
 
 
@@ -115,7 +154,8 @@ def get_help(payload, *args):
 commandmap = {
     '!spots': [get_spots, "Get the 5 most recent spots of DORC members"],
     '!solar': [get_solar, "Get solar conditions"],
-    '!call': [get_calldata, "Get callsign info '!Call <callsign>'"],
+    '!call': [get_calldata, "Get callsign info '!call <callsign>'"],
+    '!dxcc': [get_dxcc, "Get dxcc info '!dxcc <query>'"],
     '!help': [get_help, "Get the thing you're reading now"]
 }
 
@@ -128,6 +168,7 @@ async def on_ready():
 @client.event
 async def on_message(message):
     if message.author == client.user:
+    
         return
 
     isBang = False
@@ -145,6 +186,7 @@ async def on_message(message):
         def wrapper(outgoing):
             def check(reaction, user):
                 return reaction.message.id == outgoing.id
+
             return check
 
         check = wrapper(outgoing)
@@ -164,4 +206,3 @@ async def on_message(message):
 
 if __name__ == "__main__":
     client.run(TOKEN)
-#    calldata(input('Call?'))
