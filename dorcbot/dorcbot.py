@@ -10,6 +10,8 @@ import asyncio
 load_dotenv()
 
 TOKEN = os.environ.get('TOKEN')
+QRZ_API_USER = os.environ.get('QRZ_API_USER')
+QRZ_API_PASS = os.environ.get('QRZ_API_PASS')
 
 client = discord.Client()
 
@@ -44,9 +46,39 @@ class Payload:
         arg_dict = self.to_dict()
 
         return arg_dict
-                
 
-def get_spots(payload):
+def calldata(callsign):
+    pref = '{http://xmldata.qrz.com}'
+    login = requests.get(f'https://xmldata.qrz.com/xml/current/?username={QRZ_API_USER};password={QRZ_API_PASS};agent=q5.0')
+    key = ElementTree.fromstring(login.content)[0][0].text
+    resp = ElementTree.fromstring(requests.get(f'https://xmldata.qrz.com/xml/current/?s={key};callsign={callsign}').content)
+    data = resp.find(pref + 'Callsign')
+    if data:
+        calldata = {'callsign': data.find(pref + 'call').text,
+                    'fname': data.find(pref + 'fname').text,
+                    'lname': data.find(pref + 'name').text,
+                    'country': data.find(pref + 'country').text,
+                    'grid': data.find(pref + 'grid').text,
+                    }
+    else:
+        calldata = {"error": "Invalid"}
+
+    return calldata 
+
+def get_calldata(payload, callsign, *args):
+    data = calldata(callsign.split()[0])
+    if 'error' in data:
+        payload.content = "Check callsign"
+        return payload
+    else:
+        payload.content = f"Data for {data['callsign']}\n\n"
+        payload.content += f"Callsign: {data['callsign']}\n"
+        payload.content += f"Name: {data['fname']} {data['lname']}\n"
+        payload.content += f"Country: {data['country']}\n"
+        payload.content += f"Grid: {data['grid']}"
+    return payload
+
+def get_spots(payload, *args):
     spots = requests.get('https://dorc-stats.ag7su.com/data/5').json()
     payload.content = "Most recently spotted DORCs:\n\n"
     tab = []
@@ -58,7 +90,7 @@ def get_spots(payload):
     return payload
 
 
-def get_solar(payload):
+def get_solar(payload, *args):
     payload.content = "Solar Indices:\n\n"
     solarcontent = requests.get('https://joshmathis.com/dorc/solarxml.xml')
     tree = ElementTree.fromstring(solarcontent.content).find("./solardata")
@@ -73,7 +105,7 @@ def get_solar(payload):
     return payload 
 
 
-def get_help(payload):
+def get_help(payload, *args):
     # Dynamically create help based on the defined commands (commandmap)
     payload.content = "Usage: "
     for key in commandmap.keys():
@@ -87,6 +119,7 @@ def get_help(payload):
 commandmap = {
     '!spots': [get_spots, "Get the 5 most recent spots of DORC members"],
     '!solar': [get_solar, "Get solar conditions"],
+    '!call': [get_calldata, "Get callsign info '!Call <callsign>'"],
     '!help': [get_help, "Get the thing you're reading now"]
 }
 
@@ -104,13 +137,13 @@ async def on_message(message):
     isBang = False
     if message.content.startswith('!'):
         async with message.channel.typing():
-            command = re.match(r"[^\s]+", message.content).string
+            command = re.search(r"(^.\w+)?\s?(.*)", message.content)
             payload = Payload()
-            func = commandmap.get(command)
+            func = commandmap.get(command.group(1))
             if func is None:
                 payload.content = "Unsupported command. Try asking for !help instead."
             else:
-                payload = func[0](payload)
+                payload = func[0](payload, command.group(2))
         outgoing = await message.channel.send(**payload.send())
 
         def wrapper(outgoing):
@@ -135,3 +168,4 @@ async def on_message(message):
 
 if __name__ == "__main__":
     client.run(TOKEN)
+#    calldata(input('Call?'))
