@@ -48,18 +48,14 @@ class Payload:
         return arg_dict
 
 def calldata(callsign):
+    callsign = callsign.split(';')[0]
     pref = '{http://xmldata.qrz.com}'
     login = requests.get(f'https://xmldata.qrz.com/xml/current/?username={QRZ_API_USER};password={QRZ_API_PASS};agent=q5.0')
     key = ElementTree.fromstring(login.content)[0][0].text
     resp = ElementTree.fromstring(requests.get(f'https://xmldata.qrz.com/xml/current/?s={key};callsign={callsign}').content)
     data = resp.find(pref + 'Callsign')
     if data:
-        calldata = {'callsign': data.find(pref + 'call').text,
-                    'fname': data.find(pref + 'fname').text,
-                    'lname': data.find(pref + 'name').text,
-                    'country': data.find(pref + 'country').text,
-                    'grid': data.find(pref + 'grid').text,
-                    }
+        calldata = {x.tag.split('}')[1]: x.text for x in data}
     else:
         calldata = {"error": "Invalid"}
 
@@ -71,9 +67,9 @@ def get_calldata(payload, callsign, *args):
         payload.content = "Check callsign"
         return payload
     else:
-        payload.content = f"Data for {data['callsign']}\n\n"
-        payload.content += f"Callsign: {data['callsign']}\n"
-        payload.content += f"Name: {data['fname']} {data['lname']}\n"
+        payload.content = f"Data for {data['call']}\n\n"
+        payload.content += f"Callsign: {data['call']} [ Aliases: {data.get('aliases')} ]\n"
+        payload.content += f"Name: {data['fname']} {data['name']}\n"
         payload.content += f"Country: {data['country']}\n"
         payload.content += f"Grid: {data['grid']}"
     return payload
