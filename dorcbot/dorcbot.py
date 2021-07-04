@@ -83,7 +83,7 @@ def dxcc(query):
 def get_dxcc(payload, query, *args):
     data = dxcc(query.split()[0])
     if data:
-        payload.content = f"DXCC Data for {query}\n\n"
+        payload.content = f"DXCC Data for {query.upper()}\n\n"
         payload.content += f"DXCC Number: {data.get('dxcc')}\n"
         payload.content += f"Country: {data.get('name')}\n"
         payload.content += f"CC: {data.get('cc')}\n"
