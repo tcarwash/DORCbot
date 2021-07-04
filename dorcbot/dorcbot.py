@@ -57,21 +57,21 @@ def calldata(callsign):
     if data:
         calldata = {x.tag.split('}')[1]: x.text for x in data}
     else:
-        calldata = {"error": "Invalid"}
+        return None
 
     return calldata 
 
 def get_calldata(payload, callsign, *args):
     data = calldata(callsign.split()[0])
-    if 'error' in data:
-        payload.content = "Check callsign"
-        return payload
-    else:
+    if data:
         payload.content = f"Data for {data['call']}\n\n"
         payload.content += f"Callsign: {data['call']} [ Aliases: {data.get('aliases')} ]\n"
         payload.content += f"Name: {data['fname']} {data['name']}\n"
         payload.content += f"Country: {data['country']}\n"
         payload.content += f"Grid: {data['grid']}"
+    else:    
+        payload.content = "Check callsign"
+        return payload
     return payload
 
 def get_spots(payload, *args):
