@@ -6,14 +6,25 @@ from dotenv import load_dotenv
 from tabulate import tabulate
 from xml.etree import ElementTree
 import asyncio
+import shared
+import kc2g
+import xmltodict
 
 load_dotenv()
 
 TOKEN = os.environ.get('TOKEN')
 QRZ_API_USER = os.environ.get('QRZ_API_USER')
 QRZ_API_PASS = os.environ.get('QRZ_API_PASS')
+QRZCALLSIGNSAMPLE = "qrzcallsignsample.xml"
+
+cannedQRZ = (QRZ_API_USER is None)
 
 client = discord.Client()
+
+# Command map & help columns
+COMMANDMAP_FUNC = 0
+COMMANDMAP_SHORT_HELP = 1
+COMMANDMAP_LONG_HELP_FUNC = 2
 
 
 class Payload:
@@ -22,24 +33,21 @@ class Payload:
         self.content = content
         self.delete_after = delete_after
 
-
     def to_dict(self):
         # List of attributes not to send to Discord
-        keep = ['content', 'tts', 
-                'embed', 'file', 'files', 'nonce', 
+        keep = ['content', 'tts',
+                'embed', 'file', 'files', 'nonce',
                 'allowed_mentions', 'reference', 'mention_author']
 
-        arg_dict = {k: self.__dict__[k] for k in keep if k in self.__dict__} 
+        arg_dict = {k: self.__dict__[k] for k in keep if k in self.__dict__}
 
         return arg_dict
-
 
     def format_block(self):
         if self.fmt == 'codeblock':
             self.content = f"```{self.content}```"
 
         return True
-
 
     def send(self):
         self.format_block()
@@ -49,8 +57,8 @@ class Payload:
 
 
 def error(description):
-    payload = Payload(fmt = '')
-    payload.embed=discord.Embed(color=0xFF5733, title='Error:')
+    payload = Payload(fmt='')
+    payload.embed = discord.Embed(color=0xFF5733, title='Error:')
     payload.embed.description = description
     payload.embed.set_thumbnail(url='https://c.tenor.com/OxvVRFnPZO8AAAAM/error-the-simpsons.gif')
 
@@ -58,25 +66,31 @@ def error(description):
 
 
 def calldata(callsign):
-    callsign = callsign.split(';')[0]
-    pref = '{http://xmldata.qrz.com}'
-    login = requests.get(f'https://xmldata.qrz.com/xml/current/?username={QRZ_API_USER};password={QRZ_API_PASS};agent=q5.0')
-    key = ElementTree.fromstring(login.content)[0][0].text
-    resp = ElementTree.fromstring(requests.get(f'https://xmldata.qrz.com/xml/current/?s={key};callsign={callsign}').content)
-    data = resp.find(pref + 'Callsign')
-    if data:
-        calldata = {x.tag.split('}')[1]: x.text for x in data}
+    if cannedQRZ:
+        with open(QRZCALLSIGNSAMPLE) as fd:
+            calldata = xmltodict.parse(fd.read())["Callsign"]
     else:
+        callsign = callsign.split(';')[0]
+        pref = '{http://xmldata.qrz.com}'
+        login = requests.get(
+            f'https://xmldata.qrz.com/xml/current/?username={QRZ_API_USER};password={QRZ_API_PASS};agent=q5.0')
+        key = ElementTree.fromstring(login.content)[0][0].text
+        resp = ElementTree.fromstring(
+            requests.get(f'https://xmldata.qrz.com/xml/current/?s={key};callsign={callsign}').content)
+        data = resp.find(pref + 'Callsign')
+        if data:
+            calldata = {x.tag.split('}')[1]: x.text for x in data}
+        else:
+            return None
 
-        return None
-
-    return calldata 
+    return calldata
 
 
 def dxcc(query):
-    query = query.split(';')[0].upper() # allow one parameter only
+    query = query.split(';')[0].upper()  # allow one parameter only
     pref = '{http://xmldata.qrz.com}'
-    login = requests.get(f'https://xmldata.qrz.com/xml/current/?username={QRZ_API_USER};password={QRZ_API_PASS};agent=q5.0')
+    login = requests.get(
+        f'https://xmldata.qrz.com/xml/current/?username={QRZ_API_USER};password={QRZ_API_PASS};agent=q5.0')
 
     key = ElementTree.fromstring(login.content)[0][0].text
     resp = ElementTree.fromstring(requests.get(f'https://xmldata.qrz.com/xml/current/?s={key};dxcc={query}').content)
@@ -87,7 +101,7 @@ def dxcc(query):
 
         return None
 
-    return dxcc 
+    return dxcc
 
 
 def get_dxcc(payload, query, *args):
@@ -116,10 +130,11 @@ def get_calldata(payload, callsign, *args):
         payload.content += f"Country: {data['country']}\n"
         payload.content += f"State: {data.get('state')}\n"
         payload.content += f"Grid: {data['grid']}"
-    else:    
+    else:
         payload = error("Check callsign")
-        
+
     return payload
+
 
 def get_spots(payload, *args):
     spots = requests.get('https://dorc-stats.ag7su.com/data/5').json()
@@ -133,7 +148,7 @@ def get_spots(payload, *args):
         payload.content = payload.content + tabulate(tab, header)
     else:
         payload = error("API returned no records")
-    
+
     return payload
 
 
@@ -150,27 +165,93 @@ def get_solar(payload, *args):
     tab.append(row)
     payload.content = payload.content + tabulate(tab, header)
 
-    return payload 
+    return payload
 
 
-def get_help(payload, *args):
+def get_mof(payload, query, *args):
+    query = query.split()
+    if len(query) == 2:
+        loc_from = query[0]
+        loc_to = query[1]
+        # validate griddiness. If no gridditude, assume it's a callsign
+        #   If no grid is available, it will come back blank and fail the check below.
+        if not shared.isvalidgrid(loc_from):
+            loc_from = get_callsign_grid(loc_from)
+
+        if not shared.isvalidgrid(loc_to):
+            loc_to = get_callsign_grid(loc_to)
+
+        if shared.isvalidgrid(loc_from) and shared.isvalidgrid(loc_to):
+            payload.content = f"MOF from {loc_from.upper()} to {loc_to.upper()}:\n\n"
+            mof = kc2g.mof(loc_from, loc_to)
+            tab = []
+            header = ['MOF Short Path', 'MOF Long Path']
+            row = [mof['mof_sp'],
+                   mof['mof_lp']]
+            tab.append(row)
+            payload.content = payload.content + tabulate(tab, header)
+        else:
+            payload = error("Invalid input. Enter a valid grid or callsign")
+    else:
+        # FUTURE: add lookup of calling users' grid, etc
+        payload = error("Invalid input. Try !help mof for usage")
+    return payload
+
+
+def mof_usage():
+    return """
+    Get MOF (courtesy of KC2G / prop.kc2g.org)
+    
+    Returns the latest Maximum Observed Frequency between two grid squares via long & short paths.
+    
+    If a callsign is used for one or both locators, bot will attempt to find the operator's home grid via QRZ lookup. 
+    
+    """
+
+
+def get_callsign_grid(callsign):
+    callsigndata = calldata(callsign)
+    if callsigndata and 'grid' in callsigndata.keys() and len(callsigndata['grid']) > 0:
+        return callsigndata['grid']
+    else:
+        return None
+
+
+def get_help(payload, query, *args):
     # Dynamically create help based on the defined commands (commandmap)
+    query = query.split()
     payload.content = "Usage: "
-    for key in commandmap.keys():
-        command = "\n\t" + key + " -- " + commandmap.get(key)[1]
-        payload.content += command
-
-    return payload 
+    if len(query) == 0:
+        for key in commandmap.keys():
+            command = "\n\t" + key + " -- " + commandmap.get(key)[COMMANDMAP_SHORT_HELP]
+            payload.content += command
+    else:
+        # Help on a specific command
+        # Show regular help if advanced is not available
+        if query[0].startswith("!"):
+            commandname = query[0]
+        else:
+            commandname = "!" + query[0]
+        if commandname in commandmap.keys():
+            command = "\n\t" + query[0] + " -- " + commandmap.get(commandname)[COMMANDMAP_SHORT_HELP]
+            payload.content += command
+            if len(commandmap.get(commandname)) > COMMANDMAP_LONG_HELP_FUNC:
+                payload.content += "\n\t" + commandmap.get(commandname)[COMMANDMAP_LONG_HELP_FUNC]()
+        else:
+            payload.content = f"Command {commandname} not found. Try !help instead."
+    return payload
 
 
 # Add commands here. Format:
-#    '!command': [function_to_create_final_output], "Help text"
+#    '!command': [function_to_create_final_output], "Help text", detailed_usage_function_name
 commandmap = {
     '!spots': [get_spots, "Get the 5 most recent spots of DORC members"],
     '!solar': [get_solar, "Get solar conditions"],
     '!call': [get_calldata, "Get callsign info '!call <callsign>'"],
     '!dxcc': [get_dxcc, "Get dxcc info '!dxcc <query>'"],
-    '!help': [get_help, "Get the thing you're reading now"]
+    '!mof': [get_mof, "Get maximum observed frequency between "
+                      "grid squares or callsigns '!mof <from_locator> <to_locator>'", mof_usage],
+    '!help': [get_help, "Get the thing you're reading now. Use !help <command> for detailed help, if available."]
 }
 
 
@@ -182,7 +263,6 @@ async def on_ready():
 @client.event
 async def on_message(message):
     if message.author == client.user:
-    
         return
 
     isBang = False
@@ -217,6 +297,7 @@ async def on_message(message):
         # To use this, we need to check if the bot is mentioned in the message using
         #  if client.user.mentioned_in(message)
         # payload = "Only ! commands are supported. Ask for !help instead."
+
 
 if __name__ == "__main__":
     client.run(TOKEN)
