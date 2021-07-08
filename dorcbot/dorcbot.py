@@ -64,6 +64,13 @@ def error(description):
 
     return payload
 
+def usercall(user):
+    call = user.display_name.split()
+    if len(call) > 1 and re.search('[a-zA-Z0-9]{1,3}[0123456789][a-zA-Z0-9]{0,3}[a-zA-Z]', call[1]):
+        return calldata(call) 
+    else:
+        return None
+
 
 def calldata(callsign):
     if cannedQRZ:
@@ -173,28 +180,33 @@ def get_mof(payload, query, *args):
     if len(query) == 2:
         loc_from = query[0]
         loc_to = query[1]
-        # validate griddiness. If no gridditude, assume it's a callsign
-        #   If no grid is available, it will come back blank and fail the check below.
-        if not shared.isvalidgrid(loc_from):
-            loc_from = get_callsign_grid(loc_from)
-
-        if not shared.isvalidgrid(loc_to):
-            loc_to = get_callsign_grid(loc_to)
-
-        if shared.isvalidgrid(loc_from) and shared.isvalidgrid(loc_to):
-            payload.content = f"MOF from {loc_from.upper()} to {loc_to.upper()}:\n\n"
-            mof = kc2g.mof(loc_from, loc_to)
-            tab = []
-            header = ['MOF Short Path', 'MOF Long Path']
-            row = [mof['mof_sp'],
-                   mof['mof_lp']]
-            tab.append(row)
-            payload.content = payload.content + tabulate(tab, header)
-        else:
-            payload = error("Invalid input. Enter a valid grid or callsign")
     else:
-        # FUTURE: add lookup of calling users' grid, etc
-        payload = error("Invalid input. Try !help mof for usage")
+        user_call = usercall(payload.author)
+        if len(query) == 1 and user_call: 
+            loc_from = user_call['grid'] 
+            loc_to = query[0]
+        else:
+            payload = error("Invalid input. Try !help mof for usage")
+            return payload
+    # validate griddiness. If no gridditude, assume it's a callsign
+    #   If no grid is available, it will come back blank and fail the check below.
+    if not shared.isvalidgrid(loc_from):
+        loc_from = callsign_grid(loc_from)
+
+    if not shared.isvalidgrid(loc_to):
+        loc_to = callsign_grid(loc_to)
+
+    if shared.isvalidgrid(loc_from) and shared.isvalidgrid(loc_to):
+        payload.content = f"MOF from {loc_from.upper()} to {loc_to.upper()}:\n\n"
+        mof = kc2g.mof(loc_from, loc_to)
+        tab = []
+        header = ['MOF Short Path', 'MOF Long Path']
+        row = [mof['mof_sp'],
+               mof['mof_lp']]
+        tab.append(row)
+        payload.content = payload.content + tabulate(tab, header)
+    else:
+        payload = error("Invalid input. Enter a valid grid or callsign")
     return payload
 
 
@@ -205,11 +217,14 @@ def mof_usage():
     Returns the latest Maximum Observed Frequency between two grid squares via long & short paths.
     
     If a callsign is used for one or both locators, bot will attempt to find the operator's home grid via QRZ lookup. 
+
+    If your server display name is in the exact format "Name Callsign" i.e. "Tyler AG7SU" or "displayname AG7SU"
+    you may omit a starting grid to use the grid associated with your callsign on QRZ. e.g. `!mof W1AW`
     
     """
 
 
-def get_callsign_grid(callsign):
+def callsign_grid(callsign):
     callsigndata = calldata(callsign)
     if callsigndata and 'grid' in callsigndata.keys() and len(callsigndata['grid']) > 0:
         return callsigndata['grid']
@@ -270,6 +285,7 @@ async def on_message(message):
         async with message.channel.typing():
             command = re.search(r"(^.\w+)?\s?(.*)", message.content)
             payload = Payload()
+            payload.author = message.author
             func = commandmap.get(command.group(1))
             if func is None:
                 payload.content = "Unsupported command. Try asking for !help instead."

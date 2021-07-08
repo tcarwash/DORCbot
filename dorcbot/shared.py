@@ -1,8 +1,8 @@
 def isvalidgrid(locator):
     # Is this a valid Maidenhead grid?
     # Format checking from pyhamtools (https://github.com/dh1tw/pyhamtools)
-    locator = locator.upper()
     try:
+        locator = locator.upper()
         if len(locator) == 5 or len(locator) < 4:
             raise ValueError
         if ord(locator[0]) > ord('R') or ord(locator[0]) < ord('A'):
@@ -23,5 +23,5 @@ def isvalidgrid(locator):
             if ord(locator[5]) > ord('X') or ord(locator[5]) < ord('A'):
                 raise ValueError
         return True
-    except ValueError as e:
+    except:
         return False
