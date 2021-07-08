@@ -67,7 +67,7 @@ def error(description):
 def usercall(user):
     call = user.display_name.split()
     if len(call) > 1 and re.search('[a-zA-Z0-9]{1,3}[0123456789][a-zA-Z0-9]{0,3}[a-zA-Z]', call[1]):
-        return calldata(call) 
+        return calldata(call[1]) 
     else:
         return None
 
