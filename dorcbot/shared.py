@@ -1,3 +1,5 @@
+import re
+
 def isvalidgrid(locator):
     # Is this a valid Maidenhead grid?
     # Format checking from pyhamtools (https://github.com/dh1tw/pyhamtools)
@@ -25,3 +27,6 @@ def isvalidgrid(locator):
         return True
     except:
         return False
+
+def isvalidcallformat(callsign):
+    return re.search('[a-zA-Z0-9]{1,3}[0123456789][a-zA-Z0-9]{0,3}[a-zA-Z]$', callsign)

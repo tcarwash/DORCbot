@@ -66,7 +66,7 @@ def error(description):
 
 def usercall(user):
     call = user.display_name.split()
-    if len(call) > 1 and re.search('[a-zA-Z0-9]{1,3}[0123456789][a-zA-Z0-9]{0,3}[a-zA-Z]', call[1]):
+    if len(call) > 1 and shared.isvalidcall(call[1]):
         return calldata(call[1]) 
     else:
         return None
@@ -190,23 +190,36 @@ def get_mof(payload, query, *args):
             return payload
     # validate griddiness. If no gridditude, assume it's a callsign
     #   If no grid is available, it will come back blank and fail the check below.
-    if not shared.isvalidgrid(loc_from):
-        loc_from = callsign_grid(loc_from)
+    try:
+        if not shared.isvalidgrid(loc_from) and shared.isvalidcallformat(loc_from):
+            lookup_from = loc_from
+            loc_from = callsign_grid(loc_from)
+            if loc_from is None:
+                raise ValueError(f"Unable to find a grid for {lookup_from}")
+        else:
+            raise ValueError("Invalid <FROM> locator.")
 
-    if not shared.isvalidgrid(loc_to):
-        loc_to = callsign_grid(loc_to)
+        if not shared.isvalidgrid(loc_to) and shared.isvalidcallformat(loc_to):
+            lookup_to = loc_to
+            loc_to = callsign_grid(loc_to)
+            if loc_to is None:
+                raise ValueError(f"Unable to find a grid for {lookup_to}")
+        else:
+            raise ValueError("Invalid <TO> locator.")
 
-    if shared.isvalidgrid(loc_from) and shared.isvalidgrid(loc_to):
-        payload.content = f"MOF from {loc_from.upper()} to {loc_to.upper()}:\n\n"
-        mof = kc2g.mof(loc_from, loc_to)
-        tab = []
-        header = ['MOF Short Path', 'MOF Long Path']
-        row = [mof['mof_sp'],
-               mof['mof_lp']]
-        tab.append(row)
-        payload.content = payload.content + tabulate(tab, header)
-    else:
-        payload = error("Invalid input. Enter a valid grid or callsign")
+        if shared.isvalidgrid(loc_from) and shared.isvalidgrid(loc_to):
+            payload.content = f"MOF from {loc_from.upper()} to {loc_to.upper()}:\n\n"
+            mof = kc2g.mof(loc_from, loc_to)
+            tab = []
+            header = ['MOF Short Path', 'MOF Long Path']
+            row = [mof['mof_sp'],
+                   mof['mof_lp']]
+            tab.append(row)
+            payload.content = payload.content + tabulate(tab, header)
+        else:
+            raise ValueError
+    except ValueError as e:
+        payload = error(str(e))
     return payload
 
 
