@@ -160,7 +160,7 @@ def get_spots(payload, *args):
 
 
 def get_solar(payload, *args):
-    payload.content = "Solar Indices:\n\n"
+    payload.content = "Solar Indices (courtesy of hamqsl.com):\n\n"
     solarcontent = requests.get('https://joshmathis.com/dorc/solarxml.xml')
     tree = ElementTree.fromstring(solarcontent.content).find("./solardata")
     tab = []
@@ -208,7 +208,7 @@ def get_mof(payload, query, *args):
             raise ValueError("Invalid <TO> locator.")
 
         if shared.isvalidgrid(loc_from) and shared.isvalidgrid(loc_to):
-            payload.content = f"MOF from {loc_from.upper()} to {loc_to.upper()}:\n\n"
+            payload.content = f"MOF from {loc_from.upper()} to {loc_to.upper()}:\n(Courtesy of KC2G/prop.kc2g.com)\n\n"
             mof = kc2g.mof(loc_from, loc_to)
             tab = []
             header = ['MOF Short Path', 'MOF Long Path']
