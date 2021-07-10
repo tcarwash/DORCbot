@@ -66,7 +66,7 @@ def error(description):
 
 def usercall(user):
     call = user.display_name.split()
-    if len(call) > 1 and shared.isvalidcall(call[1]):
+    if len(call) > 1 and shared.isvalidcallformat(call[1]):
         return calldata(call[1]) 
     else:
         return None
@@ -196,16 +196,12 @@ def get_mof(payload, query, *args):
             loc_from = callsign_grid(loc_from)
             if loc_from is None:
                 raise ValueError(f"Unable to find a grid for {lookup_from}")
-        else:
-            raise ValueError("Invalid <FROM> locator.")
 
         if not shared.isvalidgrid(loc_to) and shared.isvalidcallformat(loc_to):
             lookup_to = loc_to
             loc_to = callsign_grid(loc_to)
             if loc_to is None:
                 raise ValueError(f"Unable to find a grid for {lookup_to}")
-        else:
-            raise ValueError("Invalid <TO> locator.")
 
         if shared.isvalidgrid(loc_from) and shared.isvalidgrid(loc_to):
             payload.content = f"MOF from {loc_from.upper()} to {loc_to.upper()}:\n(Courtesy of KC2G/prop.kc2g.com)\n\n"
