@@ -1,6 +1,9 @@
 import unittest
-import dorcbot.dorcbot as dorcbot
+import sys
 from unittest.mock import Mock, patch
+
+sys.path.append("./dorcbot")
+import dorcbot.dorcbot as dorcbot
 
 class testspots(unittest.TestCase):
 
