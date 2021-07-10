@@ -27,7 +27,7 @@ class testspots(unittest.TestCase):
         payload = dorcbot.Payload()
         mock_cmdmap = patch.object(dorcbot, 'commandmap', {'!spots': [dorcbot.get_spots, "Get the 3 most recent spots of DORC members"]})
         with mock_cmdmap:
-            out = dorcbot.get_help(payload).content
+            out = dorcbot.get_help(payload, '').content
 
         self.assertRegex(out, r'.*!spots.*')
 
