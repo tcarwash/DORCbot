@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<QRZDatabase version="1.34" xmlns="http://xmldata.qrz.com">
+<Callsign>
+<call>AG7SU</call>
+<aliases>KI7IQE</aliases>
+<dxcc>291</dxcc>
+<fname>Tyler F</fname>
+<name>Carr</name>
+<addr1>1</addr1>
+<addr2>Anywhere</addr2>
+<statei>WA</state>
+<zip>45645</zip>
+<country>United States</country>
+<lat>45.000</lat>
+<lon>-122.000</lon>
+<grid>CN85tp</grid>
+<county>Clark</county>
+<ccode>271</ccode>
+<fips>53011</fips>
+<land>United States</land>
+<efdate>2019-03-11</efdate>
+<expdate>2026-11-23</expdate>
+<class>E</class>
+<codes>HAI</codes>
+<qslmgr>Direct, QRZ, or LOTW - SWL Welcome</qslmgr>
+<email>tcarwash@gmail.com</email>
+<u_views>10546</u_views>
+<bio>8152</bio>
+<biodate>2021-06-14 04:31:41</biodate>
+<image>https://cdn-xml.qrz.com/u/ag7su/IMG_20191107_193107.jpg</image>
+<imageinfo>674:1198:141994</imageinfo>
+<moddate>2020-01-20 19:49:28</moddate>
+<MSA>6440</MSA>
+<AreaCode>503</AreaCode>
+<TimeZone>Pacific</TimeZone>
+<GMTOffset>-8</GMTOffset>
+<DST>Y</DST>
+<born>1990</born>
+<user>AG7SU</user>
+<geoloc>user</geoloc>
+<name_fmt>Tyler F Carr</name_fmt>
+</Callsign>
+<Session>
+<Key>007576eaade56e1b94f8dcfcbe8bb698</Key>
+<Count>12415</Count>
+<SubExp>Sun Jun  5 23:25:20 2022</SubExp>
+<GMTime>Thu Jul 15 18:34:06 2021</GMTime>
+<Remark>cpu: 0.032s</Remark>
+</Session>
+</QRZDatabase>
