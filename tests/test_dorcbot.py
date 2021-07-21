@@ -60,6 +60,16 @@ class testspots(unittest.TestCase):
 
         self.assertEqual(calldata["call"], "AG7SU")
 
+    @patch("dorcbot.dorcbot.requests.get")
+    def test_dxcc(self, mock_get):
+        with open("tests/dxcc.xml", "r") as f:
+            resp = f.read()
+
+        mock_get.return_value.content = resp
+        dxcc = dorcbot.dxcc("ag7su")
+
+        self.assertEqual(dxcc["dxcc"], "291")
+
 
 if __name__ == "__main__":
     unittest.main()

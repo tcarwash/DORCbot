@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<QRZDatabase version="1.34" xmlns="http://xmldata.qrz.com">
+<DXCC>
+<dxcc>291</dxcc>
+<cc>US</cc>
+<ccc>USA</ccc>
+<name>United States</name>
+<continent>NA</continent>
+<ituzone>0</ituzone>
+<cqzone>0</cqzone>
+<timezone>-5</timezone>
+<lat>37.701207</lat>
+<lon>-97.316895</lon>
+</DXCC>
+<Session>
+<Key>ed16f2e300fd9174ae0fbed8b9ef6a4d</Key>
+<Count>12428</Count>
+<SubExp>Sun Jun  5 23:25:20 2022</SubExp>
+<GMTime>Wed Jul 21 19:27:19 2021</GMTime>
+<Remark>cpu: 0.017s</Remark>
+</Session>
+</QRZDatabase>
