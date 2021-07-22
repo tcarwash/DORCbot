@@ -25,12 +25,14 @@ class testSpots(unittest.TestCase):
 
 
 class testSolar(unittest.TestCase):
+    def setUp(self):
+        with open("tests/solar.xml", "r") as f:
+            self.resp = f.read()
+
     @patch("dorcbot.dorcbot.requests.get")
     def test_solar(self, mock_get):
         payload = dorcbot.Payload()
-        with open("tests/solar.xml", "r") as f:
-            resp = f.read()
-        mock_get.return_value.content = resp
+        mock_get.return_value.content = self.resp
         solar = dorcbot.get_solar(payload).content
 
         self.assertRegex(solar, "^Solar.+\n\n.+\n.+\n09.+75$")
@@ -48,6 +50,14 @@ class testDXCC(unittest.TestCase):
         dxcc = dorcbot.dxcc("ag7su")
 
         self.assertEqual(dxcc["dxcc"], "291")
+
+    @patch("dorcbot.dorcbot.requests.get")
+    def test_dxcc(self, mock_get):
+        payload = dorcbot.Payload()
+        mock_get.return_value.content = self.resp
+        dxcc = dorcbot.get_dxcc(payload, "ag7su").content
+
+        self.assertRegex(dxcc, "^DXCC.+")
 
 
 class testSupportFuncs(unittest.TestCase):
