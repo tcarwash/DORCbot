@@ -60,16 +60,25 @@ class testDXCC(unittest.TestCase):
         self.assertRegex(dxcc, "^DXCC.+")
 
 
-class testSupportFuncs(unittest.TestCase):
-    @patch("dorcbot.dorcbot.requests.get")
-    def test_calldata(self, mock_get):
+class testCalldata(unittest.TestCase):
+    def setUp(self):
         with open("tests/calldata.xml", "r") as f:
-            resp = f.read()
+            self.resp = f.read()
 
-        mock_get.return_value.content = resp
+    @patch("dorcbot.dorcbot.requests.get")
+    def test_calldata_func(self, mock_get):
+        mock_get.return_value.content = self.resp
         calldata = dorcbot.calldata("ag7su")
 
         self.assertEqual(calldata["call"], "AG7SU")
+
+    @patch("dorcbot.dorcbot.requests.get")
+    def test_calldata(self, mock_get):
+        payload = dorcbot.Payload()
+        mock_get.return_value.content = self.resp
+        calldata = dorcbot.get_calldata(payload, "ag7su").content
+
+        self.assertRegex(calldata, "^Data.+")
 
 
 class testOtherCommands(unittest.TestCase):
