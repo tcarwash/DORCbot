@@ -8,7 +8,7 @@ on:
 
 jobs:
 
-  build:
+  test:
 
     runs-on: ubuntu-latest
     strategy:
@@ -27,7 +27,12 @@ jobs:
         python -m pip install -r ./dorcbot/requirements.txt
     - name: Run Tests
       run: |
-        python -m unittest        
+        python -m unittest 
+        
+  build:
+    needs: [test]
+    steps:
+    -uses: actions/checkout@v2
     - name: Login to Registry
       uses: docker/login-action@v1
       with:
