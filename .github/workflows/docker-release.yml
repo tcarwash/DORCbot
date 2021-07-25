@@ -40,9 +40,13 @@ jobs:
         registry: docker.ag7su.com
         username: ${{ secrets.REGISTRY_USERNAME }}
         password: ${{ secrets.REGISTRY_TOKEN }}
+    - name: Set vars for tag
+      id: vars
+      shell: bash
+      run: echo ::set-output name=VERSION::$(echo $GITHUB_REF | cut -d / -f 3)
     - name: Build the Docker image
       uses: docker/build-push-action@v2
       with:
         context: .
         push: true
-        addLatest: true
+        tags: ["docker.ag7su.com/tcarwash/dorcbot:latest", "docker.ag7su.com/tcarwash/dorcbot:${{ steps.vars.outputs.VERSION }}"]
