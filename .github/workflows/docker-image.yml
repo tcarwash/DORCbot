@@ -34,10 +34,13 @@ jobs:
         registry: docker.ag7su.com
         username: ${{ secrets.REGISTRY_USERNAME }}
         password: ${{ secrets.REGISTRY_TOKEN }}
-    
+    - name: Set vars for tag
+      id: vars
+      shell: bash
+      run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
     - name: Build the Docker image
       uses: docker/build-push-action@v2
       with:
         context: .
         push: true
-        tags: docker.ag7su.com/tcarwash/dorcbot:${{ github.ref }}
+        tags: docker.ag7su.com/tcarwash/dorcbot:${{ steps.vars.outputs.sha_short }}
