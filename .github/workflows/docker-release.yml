@@ -49,4 +49,6 @@ jobs:
       with:
         context: .
         push: true
-        tags: ["docker.ag7su.com/tcarwash/dorcbot:latest", "docker.ag7su.com/tcarwash/dorcbot:${{ steps.vars.outputs.VERSION }}"]
+        tags:
+        - docker.ag7su.com/tcarwash/dorcbot:latest
+        - docker.ag7su.com/tcarwash/dorcbot:${{ steps.vars.outputs.VERSION }}
