@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.6]
+        python-version: [3.6, 3.7, 3.8, 3.9]
         
     steps:
     - uses: actions/checkout@v2
@@ -28,7 +28,7 @@ jobs:
     - name: Run Tests
       run: |
         python -m unittest        
-    - name: Login to DockerHub
+    - name: Login to Registry
       uses: docker/login-action@v1
       with:
         registry: docker.ag7su.com
@@ -40,4 +40,4 @@ jobs:
       with:
         context: .
         push: true
-        tags: docker.ag7su.com/tcarwash/dorcbot
+        tags: docker.ag7su.com/tcarwash/dorcbot:${{ github.ref }}
