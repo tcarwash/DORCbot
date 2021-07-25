@@ -1,6 +1,8 @@
 version: '3'
 services:
   dorcbot:
-    image: dorcbot
+    image: docker.ag7su.com/tcarwash/dorcbot
     build:
       context: .
+    volumes:
+      - ./dorcbot/.env:/dorcbot/.env
