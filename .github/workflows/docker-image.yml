@@ -27,6 +27,16 @@ jobs:
         python -m pip install -r ./dorcbot/requirements.txt
     - name: Run Tests
       run: |
-        python -m unittest
+        python -m unittest        
+    - name: Login to DockerHub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.REGISTRY_USERNAME }}
+        password: ${{ secrets.REGISTRY_TOKEN }}
+    
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag docker.ag7su.com/tcarwash/dorcbot:$(date +%s)
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: true
+        tags: docker.ag7su.com/tcarwash/dorcbot:$(date +%s)
