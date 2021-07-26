@@ -67,10 +67,11 @@ class testCalldata(unittest.TestCase):
         self.mock_cannedcallinfo = patch.object(
             dorcbot, "QRZCALLSIGNSAMPLE", "dorcbot/qrzcallsignsample.xml"
         )
+        self.mock_usecanned = patch.object(dorcbot, "cannedQRZ", False)
 
     @patch("dorcbot.dorcbot.requests.get")
     def test_calldata_func(self, mock_get):
-        with self.mock_cannedcallinfo:
+        with self.mock_cannedcallinfo, self.mock_usecanned:
             mock_get.return_value.content = self.resp
             calldata = dorcbot.calldata("ag7su")
 
@@ -79,7 +80,7 @@ class testCalldata(unittest.TestCase):
     @patch("dorcbot.dorcbot.requests.get")
     def test_calldata(self, mock_get):
         payload = dorcbot.Payload()
-        with self.mock_cannedcallinfo:
+        with self.mock_cannedcallinfo, self.mock_usecanned:
             mock_get.return_value.content = self.resp
             calldata = dorcbot.get_calldata(payload, "ag7su").content
 
