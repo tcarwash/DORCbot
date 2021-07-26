@@ -16,7 +16,7 @@ jobs:
           webhookUrl: ${{ secrets.DISCORD_WEBHOOK }}
           username: releaseBot
           severity: info
-          text: ":speaker:"
+          text: ":dorc:"
           description: "DORCbot Release: ${{github.event.release.tag_name}} - ${{github.event.release.name}}"
           details: "${{github.event.release.body}}"
           footer: ""
