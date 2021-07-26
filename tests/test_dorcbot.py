@@ -65,7 +65,7 @@ class testCalldata(unittest.TestCase):
         with open("tests/calldata.xml", "r") as f:
             self.resp = f.read()
         self.mock_cannedcallinfo = patch.object(
-            dorcbot, "QRZCALLSIGNSAMPLE", "tests/calldata.xml"
+            dorcbot, "QRZCALLSIGNSAMPLE", "dorcbot/qrzcallsignsample.xml"
         )
 
     @patch("dorcbot.dorcbot.requests.get")
