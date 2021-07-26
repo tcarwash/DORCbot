@@ -60,25 +60,30 @@ class testDXCC(unittest.TestCase):
         self.assertRegex(dxcc, "^DXCC.+")
 
 
-# class testCalldata(unittest.TestCase):
-#    def setUp(self):
-#        with open("tests/calldata.xml", "r") as f:
-#            self.resp = f.read()
-#
-#    @patch("dorcbot.dorcbot.requests.get")
-#    def test_calldata_func(self, mock_get):
-#        mock_get.return_value.content = self.resp
-#        calldata = dorcbot.calldata("ag7su")
-#
-#        self.assertEqual(calldata["call"], "AG7SU")
-#
-#    @patch("dorcbot.dorcbot.requests.get")
-#    def test_calldata(self, mock_get):
-#        payload = dorcbot.Payload()
-#        mock_get.return_value.content = self.resp
-#        calldata = dorcbot.get_calldata(payload, "ag7su").content
-#
-#        self.assertRegex(calldata, "^Data.+")
+class testCalldata(unittest.TestCase):
+    def setUp(self):
+        with open("tests/calldata.xml", "r") as f:
+            self.resp = f.read()
+        self.mock_cannedcallinfo = patch.object(
+            dorcbot, "QRZCALLSIGNSAMPLE", "tests/calldata.xml"
+        )
+
+    @patch("dorcbot.dorcbot.requests.get")
+    def test_calldata_func(self, mock_get):
+        with self.mock_cannedcallinfo:
+            mock_get.return_value.content = self.resp
+            calldata = dorcbot.calldata("ag7su")
+
+        self.assertEqual(calldata["call"], "AG7SU")
+
+    @patch("dorcbot.dorcbot.requests.get")
+    def test_calldata(self, mock_get):
+        payload = dorcbot.Payload()
+        with self.mock_cannedcallinfo:
+            mock_get.return_value.content = self.resp
+            calldata = dorcbot.get_calldata(payload, "ag7su").content
+
+        self.assertRegex(calldata, "^Data.+")
 
 
 class testOtherCommands(unittest.TestCase):
