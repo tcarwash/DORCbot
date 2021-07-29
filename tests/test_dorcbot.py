@@ -106,17 +106,5 @@ class testOtherCommands(unittest.TestCase):
         self.assertRegex(out, r".*!spots.*")
 
 
-class testIsvalidgrid(unittest.TestCase):
-    def test_valid(self):
-        shared = dorcbot.shared
-        self.assertTrue(shared.isvalidgrid("CN85"))
-        self.assertTrue(shared.isvalidgrid("CN85tp"))
-        self.assertTrue(shared.isvalidgrid("cn85"))
-
-    def test_invalid(self):
-        shared = dorcbot.shared
-        self.assertFalse(shared.isvalidgrid("Garbage_notagrid"))
-
-
 if __name__ == "__main__":
     unittest.main()
