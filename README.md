@@ -16,7 +16,7 @@ This is the repository for the Digital Oddballs Radio Club's Discord chat bot. T
 To run DORCbot you will need to have completed all the steps to create an app and bot in the Discord Developer Portal. Instructions can be found [here](https://discordpy.readthedocs.io/en/stable/discord.html)
 
 ### Docker and Docker-Compose
-1. Create a file called `dorcbot/.env` example:
+1. Copy or move dorcbot/.env-template to `dorcbot/.env` and edit with necessary values example:
 ```
 TOKEN={Discord Bot Token}
 QRZ_API_USER={QRZ api username}
@@ -27,7 +27,7 @@ PRZ_API_PASS={QRZ api password}
 3. start container with `docker-compose up` or `docker-compose up -d` for detached
 
 ### Python, No Docker
-1. Create a file `dorcbot/.env` as above
+1. Create  `dorcbot/.env` as above
 2. Install dependencies `python -m pip install -r dorcbot/requirements.txt`
 3. Run `python dorcbot.py`
 
