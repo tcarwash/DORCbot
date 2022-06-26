@@ -8,7 +8,7 @@ This is the repository for the Digital Oddballs Radio Club's Discord chat bot. T
   - !solar -- Get solar conditions
   - !call -- Get callsign info '!call '
   - !dxcc -- Get dxcc info '!dxcc '
-  - !mof -- Get maximum observed frequency between grid squares or callsigns '!mof <from_locator> <to_locator>'
+  - !muf -- Get maximum usable frequency between grid squares or callsigns '!muf <from_locator> <to_locator>'
   - !help -- Get the thing you're reading now. Use !help
 
 ## Setup
