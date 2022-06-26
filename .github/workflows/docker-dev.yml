@@ -47,4 +47,4 @@ jobs:
       with:
         context: .
         push: true
-        tags: dorcbot:${{ steps.vars.outputs.sha_short }}
+        tags: ghcr.io/tcarwash/dorcbot:${{ steps.vars.outputs.sha_short }}
