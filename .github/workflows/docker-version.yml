@@ -49,5 +49,5 @@ jobs:
         context: .
         push: true
         tags: |
-          tcarwash/dorcbot:latest
-          tcarwash/dorcbot:${{ steps.vars.outputs.VERSION }}
+          latest
+          ${{ steps.vars.outputs.VERSION }}
