@@ -15,9 +15,9 @@ class testKC2G(unittest.TestCase):
     @patch("dorcbot.dorcbot.kc2g.requests.get")
     def test_kc2g(self, mock_get):
         mock_get.return_value.json.return_value = self.resp
-        mofdata = kc2g.mof("CN85", "FN85")
+        mufdata = kc2g.muf("CN85", "FN85")
 
-        self.assertEqual(mofdata["luf_lp"], 15.13131562438781)
+        self.assertEqual(mufdata["luf_lp"], 15.13131562438781)
 
 
 if __name__ == "__main__":
