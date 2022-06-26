@@ -206,7 +206,7 @@ def get_solar(payload, *args):
     return payload
 
 
-def get_mof(payload, query, *args):
+def get_muf(payload, query, *args):
     query = query.split()
     if len(query) == 2:
         loc_from = query[0]
@@ -217,7 +217,7 @@ def get_mof(payload, query, *args):
             loc_from = user_call["grid"]
             loc_to = query[0]
         else:
-            payload = error("Invalid input. Try !help mof for usage")
+            payload = error("Invalid input. Try !help muf for usage")
             return payload
     # validate griddiness. If no gridditude, assume it's a callsign
     #   If no grid is available, it will come back blank and fail the check below.
@@ -237,11 +237,11 @@ def get_mof(payload, query, *args):
                 raise ValueError(f"Unable to find a grid for {lookup_to}")
 
         if shared.isvalidgrid(loc_from) and shared.isvalidgrid(loc_to):
-            payload.content = f"MOF from {loc_from.upper()} to {loc_to.upper()}:\n(Courtesy of KC2G/prop.kc2g.com)\n\n"
-            mof = kc2g.mof(loc_from, loc_to)
+            payload.content = f"MUF from {loc_from.upper()} to {loc_to.upper()}:\n(Courtesy of KC2G/prop.kc2g.com)\n\n"
+            muf = kc2g.muf(loc_from, loc_to)
             tab = []
-            header = ["MOF Short Path", "MOF Long Path"]
-            row = [mof["mof_sp"], mof["mof_lp"]]
+            header = ["MUF Short Path", "MUF Long Path"]
+            row = [muf["muf_sp"], muf["muf_lp"]]
             tab.append(row)
             payload.content = payload.content + tabulate(tab, header)
         else:
@@ -251,16 +251,16 @@ def get_mof(payload, query, *args):
     return payload
 
 
-def mof_usage():
+def muf_usage():
     return """
-    Get MOF (courtesy of KC2G / prop.kc2g.org)
+    Get MUF (courtesy of KC2G / prop.kc2g.org)
 
-    Returns the latest Maximum Observed Frequency between two grid squares via long & short paths.
+    Returns the latest Maximum Usable Frequency between two grid squares via long & short paths.
 
     If a callsign is used for one or both locators, bot will attempt to find the operator's home grid via QRZ lookup.
 
     If your server display name is in the exact format "Name Callsign" i.e. "Tyler AG7SU" or "displayname AG7SU"
-    you may omit a starting grid to use the grid associated with your callsign on QRZ. e.g. `!mof W1AW`
+    you may omit a starting grid to use the grid associated with your callsign on QRZ. e.g. `!muf W1AW`
 
     """
 
@@ -324,11 +324,11 @@ commandmap = {
     "!solar": [get_solar, "Get solar conditions"],
     "!call": [get_calldata, "Get callsign info '!call <callsign>'"],
     "!dxcc": [get_dxcc, "Get dxcc info '!dxcc <query>'"],
-    "!mof": [
-        get_mof,
+    "!muf": [
+        get_muf,
         "Get maximum observed frequency between "
-        "grid squares or callsigns '!mof <from_locator> <to_locator>'",
-        mof_usage,
+        "grid squares or callsigns '!muf <from_locator> <to_locator>'",
+        get_muf,
     ],
     "!help": [
         get_help,

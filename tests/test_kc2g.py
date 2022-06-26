@@ -17,7 +17,7 @@ class testKC2G(unittest.TestCase):
         mock_get.return_value.json.return_value = self.resp
         mofdata = kc2g.mof("CN85", "FN85")
 
-        self.assertEqual(mofdata["lof_lp"], 15.13131562438781)
+        self.assertEqual(mofdata["luf_lp"], 15.13131562438781)
 
 
 if __name__ == "__main__":
