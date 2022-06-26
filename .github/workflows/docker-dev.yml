@@ -39,7 +39,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Login to Registry
-      uses: docker/login-action@v1
+      uses: docker/login-action@v2
       with:
         registry: docker.ag7su.com
         username: ${{ secrets.REGISTRY_USERNAME }}
