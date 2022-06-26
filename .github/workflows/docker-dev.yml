@@ -53,4 +53,4 @@ jobs:
       with:
         context: .
         push: true
-        tags: ${{ steps.vars.outputs.sha_short }}
+        tags: tcarwash/dorcbot:${{ steps.vars.outputs.sha_short }}
