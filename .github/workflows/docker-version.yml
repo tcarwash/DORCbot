@@ -49,5 +49,5 @@ jobs:
         context: .
         push: true
         tags: |
-          tcarwash/dorcbot:latest
-          tcarwash/dorcbot:${{ steps.vars.outputs.VERSION }}
+          ghcr.io/tcarwash/dorcbot:latest
+          ghcr.io/tcarwash/dorcbot:${{ steps.vars.outputs.VERSION }}

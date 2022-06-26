@@ -1,7 +1,7 @@
 version: '3'
 services:
   dorcbot:
-    image: docker.ag7su.com/tcarwash/dorcbot
+    image: ghcr.io/tcarwash/dorcbot
     build:
       context: .
     volumes:
