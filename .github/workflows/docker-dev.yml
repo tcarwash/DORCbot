@@ -2,13 +2,7 @@ name: CI-Dev
 
 on:
   push:
-    branches:
-      - main
-      - dev
   pull_request:
-    branches:
-      - main
-      - dev
 
 jobs:
 
@@ -53,4 +47,4 @@ jobs:
       with:
         context: .
         push: true
-        tags: tcarwash/dorcbot:${{ steps.vars.outputs.sha_short }}
+        tags: dorcbot:${{ steps.vars.outputs.sha_short }}
