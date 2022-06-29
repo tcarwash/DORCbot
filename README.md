@@ -1,5 +1,5 @@
 # DORCbot
-
+![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/tcarwash/dorcbot) ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/tcarwash/DORCbot/CI)
 ## What is DORCbot?
 This is the repository for the Digital Oddballs Radio Club's Discord chat bot. The bot provides amateur related information sourced from multiple sources.
 
