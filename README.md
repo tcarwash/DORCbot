@@ -7,12 +7,32 @@ lookups and propagation information.
 
 Commands are available as Discord slash commands:
 
-- `/spots` — show the five latest DORC spots
-- `/solar` — show current solar conditions
-- `/call callsign` — look up a callsign through QRZ
-- `/dxcc query` — look up a DXCC entity through QRZ
+- `/spots` — show recent DX cluster spots for configured DORC callsigns
+- `/solar` — show solar radio flux and planetary K index from NOAA
+- `/call callsign` — look up a callsign through HamQTH
+- `/dxcc query` — look up a callsign or DXCC entity through HamQTH data
 - `/muf from_locator to_locator` — show short and long path MUF
 - `/help [command]` — list commands or show command details
+- `/schedule create` — admins schedule a one time event or weekly net
+- `/schedule list` — show scheduled reminders
+- `/schedule cancel` — admins cancel a reminder by ID
+
+Schedule times use local ISO format, such as `2026-11-15 19:00`, plus an IANA
+timezone such as `America/Los_Angeles`. Choose a weekly repeat for a recurring
+net. The default reminder posts 15 minutes before start; admins can choose a
+different lead time or `0` to post at the start. Reminders are posted to the
+channel where they were created. The Compose named volume keeps schedules
+across container rebuilds and restarts.
+
+KISSChat can forward radio messages that mention `@dorcbot` to a Discord text
+channel with the same name as the KISSChat channel. Set
+`KISSCHAT_BRIDGE_TOKEN` to a long random secret in `dorcbot/.env`, keep the
+bridge port (`8765` by default) reachable only from trusted KISSChat stations,
+and configure each station with `KISSCHAT_DORCBOT_URL` and the same
+`KISSCHAT_DORCBOT_TOKEN`. DORCbot records delivered `(origin, sequence)` IDs
+in its persistent data volume, so relays receiving the same radio message do
+not post it twice. KISSChat sends its mention receipt only after DORCbot
+confirms the Discord post.
 
 The legacy `!spots`, `!solar`, `!call`, `!dxcc`, `!muf`, and `!help` commands
 remain available. Slash commands work without privileged gateway intents. To
@@ -23,7 +43,8 @@ Content Intent** for the bot in the Discord Developer Portal.
 
 Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications).
 When generating its invite URL, include the `bot` and `applications.commands`
-scopes. The bot needs permission to view channels and send messages. Enable
+scopes. The bot needs permission to view channels, send messages, and embed
+links (KISSChat posts arrive as embeds). Enable
 Message Content Intent in the Bot settings only if you want to keep using the
 legacy `!` commands.
 
@@ -32,8 +53,9 @@ while to display newly registered global commands.
 
 ## Run with Docker Compose
 
-Copy `dorcbot/.env-template` to `dorcbot/.env`, then fill in the bot token and
-optional QRZ credentials:
+Copy `dorcbot/.env-template` to `dorcbot/.env`, then set the bot token and the
+club's comma-separated callsigns. HamQTH credentials are optional and only
+needed for international callbook lookups:
 
 ```sh
 cp dorcbot/.env-template dorcbot/.env
@@ -43,7 +65,8 @@ docker compose up -d --build
 
 The Compose service passes the values into the container as environment
 variables. The container runs as an unprivileged user and restarts unless
-stopped.
+stopped. Keep the `dorcbot_data` volume when recreating the service; it contains
+the reminder schedule database.
 
 ## Run with Python
 
@@ -58,10 +81,18 @@ python -m pip install -r dorcbot/requirements.txt
 python -m dorcbot.dorcbot
 ```
 
-QRZ lookups require an XML subscription. Without QRZ credentials, `/call` uses
-the bundled sample response; `/dxcc` and callsign-based `/muf` lookups require
-credentials. Configure `QRZ_API_USER` and `QRZ_API_PASS` in the environment or
-in `dorcbot/.env`.
+`/spots` uses HamQTH's public DX cluster endpoint. Set `DORC_CALLSIGNS` to a
+comma-separated list of up to 30 member callsigns, for example
+`DORC_CALLSIGNS=AG7SU,W1AW`. HamQTH asks clients not to poll this endpoint more
+often than every 15 seconds; DORCbot caches results for one minute. `/solar`
+uses NOAA SWPC's public JSON feeds. `/dxcc` uses HamQTH's no-login DXCC data.
+
+International callbook profiles and callsign-based `/muf` lookups use
+HamQTH's free API account. Create an account and set `HAMQTH_CALLSIGN` and
+`HAMQTH_PASSWORD`; DORCbot keeps the API token in memory and sends the password
+only to HamQTH over HTTPS. Spot, solar, DXCC, and grid-to-grid MUF lookups do
+not need these credentials. HamQTH requests that applications credit its data;
+DORCbot labels HamQTH in `/spots` and in this setup guide.
 
 ## Development
 

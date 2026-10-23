@@ -1,5 +1,6 @@
 discord.py==2.7.1
+aiohttp>=3.8,<4
 python-dotenv>=1.0,<2
 requests>=2.32,<3
 tabulate>=0.9,<1
-xmltodict>=0.14,<1
+tzdata>=2025.2,<2027

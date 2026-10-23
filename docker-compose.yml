@@ -5,4 +5,13 @@ services:
       context: .
     env_file:
       - ./dorcbot/.env
+    ports:
+      - "8765:8765"
+    environment:
+      REMINDER_DB_PATH: /data/reminders.sqlite3
+    volumes:
+      - dorcbot_data:/data
     restart: unless-stopped
+
+volumes:
+  dorcbot_data:

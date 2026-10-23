@@ -10,6 +10,8 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 
 COPY dorcbot/ ./dorcbot/
 RUN useradd --create-home --uid 10001 bot \
+    && mkdir -p /data \
+    && chown bot:bot /data \
     && chown -R bot:bot /app
 
 USER bot

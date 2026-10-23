@@ -2,14 +2,18 @@ import os
 import discord
 import re
 import requests
+import threading
+import time
 from dotenv import load_dotenv
 from tabulate import tabulate
-from xml.etree import ElementTree
 import asyncio
 import logging
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from . import kc2g, shared
-import xmltodict
+from .reminders import ReminderStore, parse_schedule_time
+from .kisschat_bridge import KissChatBridge
 
 load_dotenv(Path(__file__).with_name(".env"))
 logging.basicConfig(
@@ -19,11 +23,31 @@ logging.basicConfig(
 logger = logging.getLogger("dorcbot")
 
 TOKEN = os.environ.get("TOKEN")
-QRZ_API_USER = os.environ.get("QRZ_API_USER")
-QRZ_API_PASS = os.environ.get("QRZ_API_PASS")
-QRZCALLSIGNSAMPLE = Path(__file__).with_name("qrzcallsignsample.xml")
+HAMQTH_CALLSIGN = os.environ.get("HAMQTH_CALLSIGN")
+HAMQTH_PASSWORD = os.environ.get("HAMQTH_PASSWORD")
+DORC_CALLSIGNS = sorted({
+    call.strip().upper()
+    for call in os.environ.get("DORC_CALLSIGNS", "").split(",")
+    if call.strip()
+})
+REMINDER_DB_PATH = os.environ.get(
+    "REMINDER_DB_PATH",
+    str(Path(__file__).resolve().parent.parent / "data" / "reminders.sqlite3"),
+)
+reminders = ReminderStore(REMINDER_DB_PATH)
+KISSCHAT_BRIDGE_TOKEN = os.environ.get("KISSCHAT_BRIDGE_TOKEN", "")
+kisschat_bridge = KissChatBridge(
+    None, REMINDER_DB_PATH, KISSCHAT_BRIDGE_TOKEN,
+    host=os.environ.get("KISSCHAT_BRIDGE_HOST", "0.0.0.0"),
+    port=int(os.environ.get("KISSCHAT_BRIDGE_PORT", "8765")),
+)
 
-cannedQRZ = not QRZ_API_USER or not QRZ_API_PASS
+HAMQTH_API = "https://www.hamqth.com/api/v2"
+_hamqth_token = None
+_hamqth_token_expires = 0
+_hamqth_token_lock = threading.Lock()
+_data_cache = {}
+_data_cache_lock = threading.Lock()
 
 intents = discord.Intents.default()
 # Enable the privileged gateway intent only when legacy prefix commands are
@@ -37,7 +61,41 @@ tree = discord.app_commands.CommandTree(client)
 
 @client.event
 async def setup_hook():
+    kisschat_bridge.client = client
+    await kisschat_bridge.start()
     await tree.sync()
+    asyncio.create_task(reminder_dispatcher())
+
+
+async def reminder_dispatcher():
+    """Deliver due reminders and keep recurring net times in local time."""
+    while not client.is_closed():
+        now = datetime.now(timezone.utc)
+        for reminder in await asyncio.to_thread(reminders.due, now):
+            start_local = datetime.fromisoformat(reminder["local_start"])
+            start_utc = start_local.replace(
+                tzinfo=ZoneInfo(reminder["timezone"])
+            ).astimezone(timezone.utc)
+            if now >= start_utc + timedelta(minutes=2):
+                # Skip stale notifications after downtime; advance weekly nets.
+                await asyncio.to_thread(reminders.delivered, reminder)
+                continue
+            try:
+                channel = client.get_channel(reminder["channel_id"])
+                if channel is None:
+                    channel = await client.fetch_channel(reminder["channel_id"])
+                stamp = int(start_utc.timestamp())
+                repeat = " (weekly)" if reminder["recurrence"] == "weekly" else ""
+                await channel.send(
+                    f"📻 **Reminder{repeat}: {reminder['title']}**\n"
+                    f"Starts <t:{stamp}:F> (<t:{stamp}:R>).",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                await asyncio.to_thread(reminders.delivered, reminder)
+            except Exception:
+                logger.exception("Could not deliver reminder %s", reminder["id"])
+                await asyncio.to_thread(reminders.failed, reminder["id"])
+        await asyncio.sleep(30)
 
 # Command map & help columns
 COMMANDMAP_FUNC = 0
@@ -101,71 +159,102 @@ def usercall(user):
         return None
 
 
-def calldata(callsign):
-    if cannedQRZ:
-        with open(QRZCALLSIGNSAMPLE) as fd:
-            calldata = xmltodict.parse(fd.read())["Callsign"]
-    else:
-        callsign = callsign.split(";")[0]
-        pref = "{http://xmldata.qrz.com}"
-        login = requests.get(
-            "https://xmldata.qrz.com/xml/current/",
-            params={"username": QRZ_API_USER, "password": QRZ_API_PASS, "agent": "DORCbot"},
+def cached_json(key, url, params=None, ttl=60):
+    now = time.monotonic()
+    with _data_cache_lock:
+        cached = _data_cache.get(key)
+        if cached and cached[0] > now:
+            return cached[1]
+    response = requests.get(url, params=params, timeout=15)
+    response.raise_for_status()
+    data = response.json()
+    with _data_cache_lock:
+        _data_cache[key] = (now + ttl, data)
+    return data
+
+
+def hamqth_token(force_refresh=False):
+    global _hamqth_token, _hamqth_token_expires
+    if not HAMQTH_CALLSIGN or not HAMQTH_PASSWORD:
+        raise RuntimeError(
+            "Callbook lookup needs a free HamQTH account configured with "
+            "HAMQTH_CALLSIGN and HAMQTH_PASSWORD."
+        )
+    with _hamqth_token_lock:
+        if not force_refresh and _hamqth_token and time.monotonic() < _hamqth_token_expires:
+            return _hamqth_token
+        response = requests.post(
+            f"{HAMQTH_API}/login",
+            json={"callsign": HAMQTH_CALLSIGN, "password": HAMQTH_PASSWORD},
             timeout=15,
         )
-        key = ElementTree.fromstring(login.content)[0][0].text
-        resp = ElementTree.fromstring(
-            requests.get(
-                "https://xmldata.qrz.com/xml/current/",
-                params={"s": key, "callsign": callsign},
-                timeout=15,
-            ).content
-        )
-        data = resp.find(pref + "Callsign")
-        if data:
-            calldata = {x.tag.split("}")[1]: x.text for x in data}
-        else:
-            return None
+        response.raise_for_status()
+        result = response.json()
+        _hamqth_token = result["token"]
+        _hamqth_token_expires = time.monotonic() + int(result.get("expiresIn", 3600)) - 60
+        return _hamqth_token
 
-    return calldata
+
+def calldata(callsign):
+    if not HAMQTH_CALLSIGN or not HAMQTH_PASSWORD:
+        return None
+    callsign = callsign.split(";")[0].strip().upper()
+    response = requests.get(
+        f"{HAMQTH_API}/callbook/{requests.utils.quote(callsign, safe='')}",
+        params={"app": "DORCbot"},
+        headers={"Authorization": f"Bearer {hamqth_token()}"},
+        timeout=15,
+    )
+    if response.status_code == 401:
+        response = requests.get(
+            f"{HAMQTH_API}/callbook/{requests.utils.quote(callsign, safe='')}",
+            params={"app": "DORCbot"},
+            headers={"Authorization": f"Bearer {hamqth_token(force_refresh=True)}"},
+            timeout=15,
+        )
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    record = response.json()
+    return {
+        "call": record.get("callsign", callsign),
+        "aliases": record.get("aliases"),
+        "name": record.get("name"),
+        "fname": record.get("nick"),
+        "country": record.get("country"),
+        "state": (record.get("region") or {}).get("usState"),
+        "grid": (record.get("location") or {}).get("grid"),
+    }
 
 
 def dxcc(query):
-    if cannedQRZ:
+    query = query.split(";")[0].strip().upper()
+    if not query:
         return None
-    query = query.split(";")[0].upper()  # allow one parameter only
-    pref = "{http://xmldata.qrz.com}"
-    login = requests.get(
-        "https://xmldata.qrz.com/xml/current/",
-        params={"username": QRZ_API_USER, "password": QRZ_API_PASS, "agent": "DORCbot"},
-        timeout=15,
+    param = "entity" if query.isdigit() else "callsign"
+    record = cached_json(
+        f"dxcc:{param}:{query}",
+        f"{HAMQTH_API}/dxcc",
+        {param: query},
+        ttl=86400,
     )
-
-    key = ElementTree.fromstring(login.content)[0][0].text
-    resp = ElementTree.fromstring(
-        requests.get(
-            "https://xmldata.qrz.com/xml/current/",
-            params={"s": key, "dxcc": query},
-            timeout=15,
-        ).content
-    )
-    data = resp.find(pref + "DXCC")
-    if data:
-        dxcc = {x.tag.split("}")[1]: x.text for x in data}
-    else:
-
-        return None
-
-    return dxcc
+    entity = record.get("entity") or {}
+    return {
+        "dxcc": entity.get("adif"),
+        "name": entity.get("name") or record.get("details"),
+        "continent": record.get("continent") or entity.get("continent"),
+        "ituzone": record.get("itu") or entity.get("itu"),
+        "cqzone": record.get("waz") or entity.get("waz"),
+        "timezone": record.get("utcOffset"),
+    }
 
 
 def get_dxcc(payload, query, *args):
     data = dxcc(query.split()[0])
     if data:
-        payload.content = f"DXCC Data for {query.upper()}\n\n"
+        payload.content = f"DXCC Data for {query.upper()} (HamQTH)\n\n"
         payload.content += f"DXCC Number: {data.get('dxcc')}\n"
         payload.content += f"Country: {data.get('name')}\n"
-        payload.content += f"CC: {data.get('cc')}\n"
         payload.content += f"Continent: {data.get('continent')}\n"
         payload.content += f"ITU Zone: {data.get('ituzone')}\n"
         payload.content += f"CQ Zone: {data.get('cqzone')}\n"
@@ -179,57 +268,124 @@ def get_dxcc(payload, query, *args):
 
 
 def get_calldata(payload, callsign, *args):
+    if not HAMQTH_CALLSIGN or not HAMQTH_PASSWORD:
+        public_data = dxcc(callsign.split()[0])
+        if not public_data:
+            return error("No public DXCC information found for that callsign.")
+        payload.content = f"Public HamQTH DXCC data for {callsign.upper()}\n\n"
+        payload.content += f"Country/entity: {public_data.get('name')}\n"
+        payload.content += f"Continent: {public_data.get('continent')}\n"
+        payload.content += f"ITU zone: {public_data.get('ituzone')}\n"
+        payload.content += f"CQ zone: {public_data.get('cqzone')}\n\n"
+        payload.content += (
+            "Configure a free HamQTH account to see full callbook profile and grid data."
+        )
+        return payload
     data = calldata(callsign.split()[0])
     if data:
-        payload.content = f"Data for {data['call']}\n\n"
+        payload.content = f"Data for {data.get('call', callsign.upper())} (HamQTH)\n\n"
         payload.content += (
-            f"Callsign: {data['call']} [ Aliases: {data.get('aliases')} ]\n"
+            f"Callsign: {data.get('call', callsign.upper())} [ Aliases: {data.get('aliases') or 'none'} ]\n"
         )
-        payload.content += f"Name: {data['fname']} {data['name']}\n"
-        payload.content += f"Country: {data['country']}\n"
-        payload.content += f"State: {data.get('state')}\n"
-        payload.content += f"Grid: {data['grid']}"
+        payload.content += f"Name: {data.get('name') or 'not listed'}\n"
+        payload.content += f"Country: {data.get('country') or 'not listed'}\n"
+        payload.content += f"State: {data.get('state') or 'not listed'}\n"
+        payload.content += f"Grid: {data.get('grid') or 'not listed'}"
     else:
-        payload = error("Check callsign")
+        payload = error(
+            "No HamQTH callbook result. Callbook lookup requires a free HamQTH account."
+        )
 
     return payload
 
 
 def get_spots(payload, *args):
-    spots = requests.get("https://dorc-stats.ag7su.com/data/5", timeout=15).json()
-    payload.content = "Most recently spotted DORCs:\n\n"
-    tab = []
-    header = ["Call", "freq.", "mode", "time"]
-    if spots[0].get("callsign"):
-        for spot in spots:
-            row = [
-                spot["callsign"],
-                spot["frequency"],
-                spot["mode"],
-                spot["time"],
-            ]
-            tab.append(row)
-        payload.content = payload.content + tabulate(tab, header)
+    if not DORC_CALLSIGNS:
+        return error("Configure DORC_CALLSIGNS with comma-separated club callsigns.")
+    if len(DORC_CALLSIGNS) > 30:
+        return error("DORC_CALLSIGNS can contain at most 30 callsigns.")
+    calls = ",".join(DORC_CALLSIGNS)
+    response = cached_json(
+        f"spots:{calls}",
+        f"{HAMQTH_API}/spots",
+        {"calls": calls, "limit": 200},
+        ttl=60,
+    )
+    spots = response.get("spots", []) if isinstance(response, dict) else []
+    payload.content = "Recent spots of DORC members (data provided by HamQTH):\n\n"
+    table = [
+        [
+            spot.get("dxcall", "?"),
+            spot.get("freq", "?"),
+            spot.get("mode") or "?",
+            spot.get("spotter", "?"),
+            spot.get("time", "?"),
+        ]
+        for spot in spots[:5]
+    ]
+    if table:
+        payload.content += tabulate(
+            table, ["Call", "kHz", "mode", "spotted by", "time UTC"]
+        )
     else:
-        payload = error("API returned no records")
+        payload.content += "No recent spots found for the configured member callsigns."
 
     return payload
 
 
+def _latest_measurement(data, value_keys):
+    """Read the latest useful value from NOAA's JSON object or row formats."""
+    if isinstance(data, dict):
+        for key in value_keys:
+            value = data.get(key)
+            if value not in (None, ""):
+                return data.get("time_tag", data.get("time")), value
+        rows = data.get("data")
+        if rows is not None:
+            data = rows
+    if not isinstance(data, list):
+        return None, None
+
+    rows = []
+    if data and isinstance(data[0], list):
+        headers = [str(value).lower() for value in data[0]]
+        rows = [dict(zip(headers, row)) for row in data[1:] if isinstance(row, list)]
+    else:
+        rows = [row for row in data if isinstance(row, dict)]
+    for row in reversed(rows):
+        lowered = {str(key).lower(): value for key, value in row.items()}
+        value = next(
+            (lowered[key] for key in value_keys if lowered.get(key) not in (None, "")),
+            None,
+        )
+        if value is not None:
+            return lowered.get("time_tag", lowered.get("time")), value
+    return None, None
+
+
 def get_solar(payload, *args):
-    payload.content = "Solar Indices (courtesy of hamqsl.com):\n\n"
-    solarcontent = requests.get("https://joshmathis.com/dorc/solarxml.xml", timeout=15)
-    tree = ElementTree.fromstring(solarcontent.content).find("./solardata")
-    tab = []
-    header = ["As of", "A", "K", "SFI"]
-    row = [
-        tree.find("./updated").text,
-        tree.find("./aindex").text,
-        tree.find("./kindex").text,
-        tree.find("./solarflux").text,
-    ]
-    tab.append(row)
-    payload.content = payload.content + tabulate(tab, header)
+    flux_data = cached_json(
+        "noaa:solar-flux",
+        "https://services.swpc.noaa.gov/json/solar-radio-flux.json",
+        ttl=300,
+    )
+    kp_data = cached_json(
+        "noaa:planetary-k",
+        "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json",
+        ttl=300,
+    )
+    flux_time, flux = _latest_measurement(flux_data, ("adjusted", "flux", "sfi"))
+    kp_time, kp = _latest_measurement(kp_data, ("kp_index", "kp", "k"))
+    payload.content = "Current solar data (NOAA Space Weather Prediction Center):\n\n"
+    rows = []
+    if flux is not None:
+        rows.append(["Solar radio flux (10.7 cm)", flux, flux_time or ""])
+    if kp is not None:
+        rows.append(["Planetary K index", kp, kp_time or ""])
+    if rows:
+        payload.content += tabulate(rows, ["Index", "Value", "As of UTC"])
+    else:
+        payload = error("NOAA returned no current solar readings.")
 
     return payload
 
@@ -285,10 +441,10 @@ def muf_usage():
 
     Returns the latest Maximum Usable Frequency between two grid squares via long & short paths.
 
-    If a callsign is used for one or both locators, bot will attempt to find the operator's home grid via QRZ lookup.
+    If a callsign is used for one or both locators, bot will attempt to find the operator's home grid via the HamQTH callbook.
 
     If your server display name is in the exact format "Name Callsign" i.e. "Tyler AG7SU" or "displayname AG7SU"
-    you may omit a starting grid to use the grid associated with your callsign on QRZ. e.g. `!muf W1AW`
+    you may omit a starting grid to use the grid associated with your callsign on HamQTH. e.g. `!muf W1AW`
 
     """
 
@@ -348,7 +504,7 @@ def get_help(payload, query, *args):
 # Add commands here. Format:
 #    '!command': [function_to_create_final_output], "Help text", detailed_usage_function_name
 commandmap = {
-    "!spots": [get_spots, "Get the 5 most recent spots of DORC members"],
+    "!spots": [get_spots, "Get recent spots for DORC callsigns"],
     "!solar": [get_solar, "Get solar conditions"],
     "!call": [get_calldata, "Get callsign info '!call <callsign>'"],
     "!dxcc": [get_dxcc, "Get dxcc info '!dxcc <query>'"],
@@ -382,7 +538,7 @@ async def send_command_result(interaction, function, query=""):
             await interaction.response.send_message(message, ephemeral=True)
 
 
-@tree.command(name="spots", description="Show the five latest DORC spots")
+@tree.command(name="spots", description="Show recent spots for DORC callsigns")
 async def slash_spots(interaction: discord.Interaction):
     await send_command_result(interaction, get_spots)
 
@@ -392,12 +548,12 @@ async def slash_solar(interaction: discord.Interaction):
     await send_command_result(interaction, get_solar)
 
 
-@tree.command(name="call", description="Look up a callsign on QRZ")
+@tree.command(name="call", description="Look up a callsign in the HamQTH callbook")
 async def slash_call(interaction: discord.Interaction, callsign: str):
     await send_command_result(interaction, get_calldata, callsign)
 
 
-@tree.command(name="dxcc", description="Look up a DXCC entity on QRZ")
+@tree.command(name="dxcc", description="Look up a callsign or entity using HamQTH data")
 async def slash_dxcc(interaction: discord.Interaction, query: str):
     await send_command_result(interaction, get_dxcc, query)
 
@@ -410,6 +566,129 @@ async def slash_muf(interaction: discord.Interaction, from_locator: str, to_loca
 @tree.command(name="help", description="Show DORCbot commands")
 async def slash_help(interaction: discord.Interaction, command: str = ""):
     await send_command_result(interaction, get_help, command)
+
+
+schedule = discord.app_commands.Group(
+    name="schedule",
+    description="Schedule club nets and event reminders",
+)
+tree.add_command(schedule)
+
+
+def is_server_admin(interaction):
+    return interaction.guild is not None and interaction.permissions.administrator
+
+
+@schedule.command(name="create", description="Schedule an event or recurring net")
+@discord.app_commands.choices(
+    repeat=[
+        discord.app_commands.Choice(name="One time", value="once"),
+        discord.app_commands.Choice(name="Weekly net", value="weekly"),
+    ]
+)
+@discord.app_commands.describe(
+    title="Reminder name",
+    start="Local date/time, for example 2026-11-15 19:00",
+    timezone_name="IANA timezone, for example America/Los_Angeles",
+    reminder_minutes="Minutes before start (0 posts at the start)",
+)
+@discord.app_commands.default_permissions(administrator=True)
+async def schedule_create(
+    interaction: discord.Interaction,
+    title: str,
+    start: str,
+    timezone_name: str,
+    repeat: str,
+    reminder_minutes: discord.app_commands.Range[int, 0, 1440] = 15,
+):
+    if not is_server_admin(interaction):
+        await interaction.response.send_message(
+            "Only server administrators can schedule reminders.", ephemeral=True
+        )
+        return
+    try:
+        title = title.strip()
+        if not title:
+            raise ValueError("Enter a reminder title.")
+        local_start, start_utc = parse_schedule_time(start, timezone_name)
+        if start_utc <= datetime.now(timezone.utc):
+            raise ValueError("Choose a start time in the future.")
+        reminder_utc = start_utc - timedelta(minutes=reminder_minutes)
+        reminder_id = await asyncio.to_thread(
+            reminders.create,
+            interaction.guild_id,
+            interaction.channel_id,
+            title,
+            local_start,
+            timezone_name,
+            repeat,
+            reminder_utc,
+            interaction.user.id,
+            reminder_minutes,
+        )
+    except ValueError as exc:
+        await interaction.response.send_message(str(exc), ephemeral=True)
+        return
+    except Exception:
+        logger.exception("Could not create scheduled reminder")
+        await interaction.response.send_message(
+            "Could not save that reminder. Please try again.", ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        f"Scheduled **{title}** (ID `{reminder_id}`) in <#{interaction.channel_id}>. "
+        f"It starts <t:{int(start_utc.timestamp())}:F>; I’ll remind this channel "
+        f"{reminder_minutes} minute(s) beforehand."
+    )
+
+
+@schedule.command(name="list", description="List scheduled nets and events")
+async def schedule_list(interaction: discord.Interaction):
+    if interaction.guild_id is None:
+        await interaction.response.send_message(
+            "Schedules are available inside the server.", ephemeral=True
+        )
+        return
+    rows = await asyncio.to_thread(reminders.list_for_guild, interaction.guild_id)
+    if not rows:
+        await interaction.response.send_message("No reminders are scheduled.")
+        return
+    lines = []
+    for row in rows[:10]:
+        local_start = datetime.fromisoformat(row["local_start"])
+        stamp = int(
+            local_start.replace(tzinfo=ZoneInfo(row["timezone"])).timestamp()
+        )
+        repeat = " · weekly" if row["recurrence"] == "weekly" else ""
+        lines.append(
+            f"`{row['id']}` **{row['title']}**{repeat} — "
+            f"<t:{stamp}:F> in <#{row['channel_id']}>"
+        )
+    suffix = "\nShowing the next 10 only." if len(rows) > 10 else ""
+    await interaction.response.send_message("\n".join(lines) + suffix)
+
+
+@schedule.command(name="cancel", description="Cancel a scheduled reminder by ID")
+@discord.app_commands.default_permissions(administrator=True)
+async def schedule_cancel(interaction: discord.Interaction, reminder_id: int):
+    if not is_server_admin(interaction):
+        await interaction.response.send_message(
+            "Only server administrators can cancel reminders.", ephemeral=True
+        )
+        return
+    if interaction.guild_id is None:
+        await interaction.response.send_message(
+            "Schedules are available inside the server.", ephemeral=True
+        )
+        return
+    cancelled = await asyncio.to_thread(
+        reminders.cancel, interaction.guild_id, reminder_id
+    )
+    await interaction.response.send_message(
+        "Reminder cancelled." if cancelled else "No active reminder found with that ID.",
+        ephemeral=True,
+    )
 
 
 @client.event
