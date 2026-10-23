@@ -7,72 +7,81 @@ import dorcbot.dorcbot as dorcbot
 
 
 class testSpots(unittest.TestCase):
+    def setUp(self):
+        dorcbot._data_cache.clear()
+
     @patch("dorcbot.dorcbot.requests.get")
     def test_spots(self, mock_get):
         payload = dorcbot.Payload()
-        resp = [
-            {
-                "callsign": "AF7SO",
-                "frequency": "14.074",
-                "mode": "FT8",
-                "time": "Wed, 09 Jun 2021 01:25:21 GMT",
-            }
-        ]
+        resp = {"spots": [
+            {"dxcall": "AF7SO", "freq": "14.074", "mode": "FT8",
+             "spotter": "AG7SU", "time": "Wed, 09 Jun 2021 01:25:21 GMT"}
+        ]}
         mock_get.return_value.json.return_value = resp
-        spots = dorcbot.get_spots(payload).content
+        with patch.object(dorcbot, "DORC_CALLSIGNS", ["AG7SU"]):
+            spots = dorcbot.get_spots(payload).content
 
-        self.assertRegex(spots, "^Most.+\n\nCall.+\n.+\nAF7SO.+GMT$")
+        self.assertRegex(spots, "^Recent spots.+\n\nCall.+\n.+\nAF7SO.+GMT$")
 
 
 class testSolar(unittest.TestCase):
     def setUp(self):
-        with open("tests/solar.xml", "r") as f:
-            self.resp = f.read()
+        dorcbot._data_cache.clear()
 
     @patch("dorcbot.dorcbot.requests.get")
     def test_solar(self, mock_get):
         payload = dorcbot.Payload()
-        mock_get.return_value.content = self.resp
+        mock_get.side_effect = [
+            Mock(json=Mock(return_value=[{"time_tag": "2026-10-22", "flux": 75}])),
+            Mock(json=Mock(return_value=[["time_tag", "Kp"], ["2026-10-22", "0.9"]])),
+        ]
         solar = dorcbot.get_solar(payload).content
 
-        self.assertRegex(solar, "^Solar.+\n\n.+\n.+\n09.+75$")
+        self.assertIn("Current solar data", solar)
+        self.assertIn("Solar radio flux (10.7 cm)", solar)
+        self.assertIn("75", solar)
+        self.assertIn("Planetary K index", solar)
+        self.assertIn("0.9", solar)
 
 
 class testDXCC(unittest.TestCase):
     def setUp(self):
-        with open("tests/dxcc.xml", "r") as f:
-            self.resp = f.read()
+        dorcbot._data_cache.clear()
 
     @patch("dorcbot.dorcbot.requests.get")
     def test_dxcc_func(self, mock_get):
 
-        mock_get.return_value.content = self.resp
+        mock_get.return_value.json.return_value = {
+            "entity": {"adif": 291, "name": "United States", "continent": "NA"}
+        }
         dxcc = dorcbot.dxcc("ag7su")
 
-        self.assertEqual(dxcc["dxcc"], "291")
+        self.assertEqual(dxcc["dxcc"], 291)
 
     @patch("dorcbot.dorcbot.requests.get")
     def test_dxcc(self, mock_get):
         payload = dorcbot.Payload()
-        mock_get.return_value.content = self.resp
+        mock_get.return_value.json.return_value = {
+            "entity": {"adif": 291, "name": "United States", "continent": "NA"}
+        }
         dxcc = dorcbot.get_dxcc(payload, "ag7su").content
 
         self.assertRegex(dxcc, "^DXCC.+")
 
 
 class testCalldata(unittest.TestCase):
-    def setUp(self):
-        with open("tests/calldata.xml", "r") as f:
-            self.resp = f.read()
-        self.mock_cannedcallinfo = patch.object(
-            dorcbot, "QRZCALLSIGNSAMPLE", "dorcbot/qrzcallsignsample.xml"
-        )
-        self.mock_usecanned = patch.object(dorcbot, "cannedQRZ", False)
-
     @patch("dorcbot.dorcbot.requests.get")
     def test_calldata_func(self, mock_get):
-        with self.mock_cannedcallinfo, self.mock_usecanned:
-            mock_get.return_value.content = self.resp
+        response = mock_get.return_value
+        response.status_code = 200
+        response.json.return_value = {
+            "callsign": "AG7SU", "aliases": "", "name": "Test Operator",
+            "nick": "Test", "country": "United States",
+            "region": {"usState": "Oregon"}, "location": {"grid": "CN85"},
+        }
+        with patch.object(dorcbot, "HAMQTH_CALLSIGN", "AG7SU"), \
+             patch.object(dorcbot, "HAMQTH_PASSWORD", "secret"), \
+             patch.object(dorcbot, "hamqth_token", return_value="token"):
             calldata = dorcbot.calldata("ag7su")
 
         self.assertEqual(calldata["call"], "AG7SU")
@@ -80,8 +89,15 @@ class testCalldata(unittest.TestCase):
     @patch("dorcbot.dorcbot.requests.get")
     def test_calldata(self, mock_get):
         payload = dorcbot.Payload()
-        with self.mock_cannedcallinfo, self.mock_usecanned:
-            mock_get.return_value.content = self.resp
+        response = mock_get.return_value
+        response.status_code = 200
+        response.json.return_value = {
+            "callsign": "AG7SU", "name": "Test Operator",
+            "country": "United States", "location": {"grid": "CN85"},
+        }
+        with patch.object(dorcbot, "HAMQTH_CALLSIGN", "AG7SU"), \
+             patch.object(dorcbot, "HAMQTH_PASSWORD", "secret"), \
+             patch.object(dorcbot, "hamqth_token", return_value="token"):
             calldata = dorcbot.get_calldata(payload, "ag7su").content
 
         self.assertRegex(calldata, "^Data.+")
