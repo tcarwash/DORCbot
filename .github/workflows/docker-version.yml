@@ -29,6 +29,15 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v7
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -39,6 +48,5 @@ jobs:
         with:
           context: .
           push: true
-          tags: |
-            ghcr.io/tcarwash/dorcbot:latest
-            ghcr.io/tcarwash/dorcbot:${{ github.ref_name }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

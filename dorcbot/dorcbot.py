@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from . import kc2g, shared
 from .reminders import ReminderStore, parse_schedule_time
+from .callsigns import CallsignStore
 from .kisschat_bridge import KissChatBridge
 
 load_dotenv(Path(__file__).with_name(".env"))
@@ -35,6 +36,7 @@ REMINDER_DB_PATH = os.environ.get(
     str(Path(__file__).resolve().parent.parent / "data" / "reminders.sqlite3"),
 )
 reminders = ReminderStore(REMINDER_DB_PATH)
+callsign_store = CallsignStore(REMINDER_DB_PATH)
 KISSCHAT_BRIDGE_TOKEN = os.environ.get("KISSCHAT_BRIDGE_TOKEN", "")
 kisschat_bridge = KissChatBridge(
     None, REMINDER_DB_PATH, KISSCHAT_BRIDGE_TOKEN,
@@ -50,6 +52,7 @@ _data_cache = {}
 _data_cache_lock = threading.Lock()
 
 intents = discord.Intents.default()
+intents.members = True
 # Enable the privileged gateway intent only when legacy prefix commands are
 # requested. Slash commands work without Message Content access.
 intents.message_content = os.environ.get("ENABLE_PREFIX_COMMANDS", "false").lower() in {
@@ -63,7 +66,15 @@ tree = discord.app_commands.CommandTree(client)
 async def setup_hook():
     kisschat_bridge.client = client
     await kisschat_bridge.start()
-    await tree.sync()
+    guild_id = os.environ.get("DISCORD_GUILD_ID", "").strip()
+    if guild_id:
+        guild = discord.Object(id=int(guild_id))
+        tree.copy_global_to(guild=guild)
+        synced = await tree.sync(guild=guild)
+        logger.info("Synced %d application commands to Discord guild %s", len(synced), guild_id)
+    else:
+        synced = await tree.sync()
+        logger.info("Synced %d global application commands", len(synced))
     asyncio.create_task(reminder_dispatcher())
 
 
@@ -152,11 +163,21 @@ def error(description):
 
 
 def usercall(user):
-    call = user.display_name.split()
-    if len(call) > 1 and shared.isvalidcallformat(call[1]):
-        return calldata(call[1])
+    callsign = nickname_callsign(user)
+    if callsign:
+        return calldata(callsign)
     else:
         return None
+
+
+def nickname_callsign(user):
+    """Use the second nickname word as the callsign, matching the /muf convention."""
+    words = getattr(user, "display_name", "").split()
+    if len(words) < 2:
+        return None
+    candidate = words[1].upper()
+    match = shared.isvalidcallformat(candidate)
+    return candidate if match and match.group(0) == candidate else None
 
 
 def cached_json(key, url, params=None, ttl=60):
@@ -299,12 +320,13 @@ def get_calldata(payload, callsign, *args):
     return payload
 
 
-def get_spots(payload, *args):
-    if not DORC_CALLSIGNS:
-        return error("Configure DORC_CALLSIGNS with comma-separated club callsigns.")
-    if len(DORC_CALLSIGNS) > 30:
-        return error("DORC_CALLSIGNS can contain at most 30 callsigns.")
-    calls = ",".join(DORC_CALLSIGNS)
+def get_spots(payload, query="", member_callsigns=None, *args):
+    callsigns = sorted(set(DORC_CALLSIGNS).union(member_callsigns or []))
+    if not callsigns:
+        return error("No member callsigns found. Add a callsign to member nicknames or use /callsign set.")
+    if len(callsigns) > 30:
+        return error("HamQTH supports at most 30 callsigns per spots request.")
+    calls = ",".join(callsigns)
     response = cached_json(
         f"spots:{calls}",
         f"{HAMQTH_API}/spots",
@@ -521,26 +543,53 @@ commandmap = {
 }
 
 
-async def send_command_result(interaction, function, query=""):
+async def send_command_result(interaction, function, query="", *args):
     """Run a blocking data lookup away from Discord's event loop."""
     payload = Payload()
     payload.author = interaction.user
     try:
-        payload = await asyncio.to_thread(function, payload, query)
-        await interaction.response.send_message(**payload.send())
+        payload = await asyncio.to_thread(function, payload, query, *args)
+        if interaction.response.is_done():
+            await interaction.edit_original_response(**payload.send())
+        else:
+            await interaction.response.send_message(**payload.send())
     except Exception:
         # Keep service details and credentials out of public Discord messages.
         logger.exception("Slash command %s failed", function.__name__)
         message = "That lookup failed. Please try again in a moment."
         if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
+            await interaction.edit_original_response(content=message, embeds=[])
         else:
             await interaction.response.send_message(message, ephemeral=True)
 
 
 @tree.command(name="spots", description="Show recent spots for DORC callsigns")
 async def slash_spots(interaction: discord.Interaction):
-    await send_command_result(interaction, get_spots)
+    await interaction.response.defer(thinking=True)
+    member_callsigns = []
+    if interaction.guild is not None:
+        try:
+            members = [member async for member in interaction.guild.fetch_members(limit=None)]
+            registered = await asyncio.to_thread(
+                callsign_store.list_for_guild, interaction.guild_id
+            )
+            for member in members:
+                if member.bot:
+                    continue
+                callsign = registered.get(member.id) or nickname_callsign(member)
+                if callsign:
+                    member_callsigns.append(callsign)
+        except Exception:
+            logger.exception("Could not collect callsigns for guild %s", interaction.guild_id)
+            await interaction.edit_original_response(
+                content=(
+                    "I couldn't read the server member list. Enable the Guild Members intent "
+                    "for DORCbot in the Discord Developer Portal, then restart it."
+                ),
+                embeds=[],
+            )
+            return
+    await send_command_result(interaction, get_spots, "", member_callsigns)
 
 
 @tree.command(name="solar", description="Show current solar conditions")
@@ -566,6 +615,71 @@ async def slash_muf(interaction: discord.Interaction, from_locator: str, to_loca
 @tree.command(name="help", description="Show DORCbot commands")
 async def slash_help(interaction: discord.Interaction, command: str = ""):
     await send_command_result(interaction, get_help, command)
+
+
+callsign_commands = discord.app_commands.Group(
+    name="callsign", description="Register the callsign DORCbot uses for you"
+)
+tree.add_command(callsign_commands)
+
+
+@callsign_commands.command(name="set", description="Register or update your callsign")
+async def callsign_set(interaction: discord.Interaction, callsign: str):
+    if interaction.guild_id is None:
+        await interaction.response.send_message(
+            "Callsigns can only be registered inside a server.", ephemeral=True
+        )
+        return
+    callsign = callsign.strip().upper()
+    match = shared.isvalidcallformat(callsign)
+    if not match or match.group(0) != callsign:
+        await interaction.response.send_message(
+            "Enter a valid amateur radio callsign, such as AG7SU.", ephemeral=True
+        )
+        return
+    await asyncio.to_thread(
+        callsign_store.set, interaction.guild_id, interaction.user.id, callsign
+    )
+    await interaction.response.send_message(
+        f"Your callsign is set to **{callsign}** for this server.", ephemeral=True
+    )
+
+
+@callsign_commands.command(name="show", description="Show your registered callsign")
+async def callsign_show(interaction: discord.Interaction):
+    if interaction.guild_id is None:
+        await interaction.response.send_message(
+            "Callsigns can only be viewed inside a server.", ephemeral=True
+        )
+        return
+    callsign = await asyncio.to_thread(
+        callsign_store.get, interaction.guild_id, interaction.user.id
+    )
+    if callsign:
+        message = f"Your registered callsign is **{callsign}**."
+    else:
+        message = (
+            "You don't have a registered callsign. DORCbot will use the second "
+            "word of your server nickname, or set one with `/callsign set`."
+        )
+    await interaction.response.send_message(message, ephemeral=True)
+
+
+@callsign_commands.command(name="clear", description="Remove your registered callsign")
+async def callsign_clear(interaction: discord.Interaction):
+    if interaction.guild_id is None:
+        await interaction.response.send_message(
+            "Callsigns can only be cleared inside a server.", ephemeral=True
+        )
+        return
+    removed = await asyncio.to_thread(
+        callsign_store.remove, interaction.guild_id, interaction.user.id
+    )
+    message = (
+        "Your registered callsign was cleared. DORCbot will use your nickname if it contains one."
+        if removed else "You don't have a registered callsign."
+    )
+    await interaction.response.send_message(message, ephemeral=True)
 
 
 schedule = discord.app_commands.Group(

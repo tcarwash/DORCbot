@@ -1,6 +1,6 @@
 services:
   dorcbot:
-    image: ghcr.io/tcarwash/dorcbot
+    image: ghcr.io/tcarwash/dorcbot:latest
     build:
       context: .
     env_file:

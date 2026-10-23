@@ -13,6 +13,7 @@ Commands are available as Discord slash commands:
 - `/dxcc query` — look up a callsign or DXCC entity through HamQTH data
 - `/muf from_locator to_locator` — show short and long path MUF
 - `/help [command]` — list commands or show command details
+- `/callsign set|show|clear` — register or manage your callsign for this server
 - `/schedule create` — admins schedule a one time event or weekly net
 - `/schedule list` — show scheduled reminders
 - `/schedule cancel` — admins cancel a reminder by ID
@@ -35,18 +36,31 @@ not post it twice. KISSChat sends its mention receipt only after DORCbot
 confirms the Discord post.
 
 The legacy `!spots`, `!solar`, `!call`, `!dxcc`, `!muf`, and `!help` commands
-remain available. Slash commands work without privileged gateway intents. To
-use prefix commands, set `ENABLE_PREFIX_COMMANDS=true` and enable **Message
-Content Intent** for the bot in the Discord Developer Portal.
+remain available. Most slash commands work without privileged gateway intents;
+`/spots` nickname scanning needs Guild Members Intent. To use prefix commands,
+set `ENABLE_PREFIX_COMMANDS=true` and enable **Message Content Intent** for the
+bot in the Discord Developer Portal.
+
+`/spots` reads callsigns from the second word of each member's server nickname,
+using the same convention as `/muf` (for example, `Tyler AG7SU`). A member's
+`/callsign set` registration takes precedence over their nickname;
+`/callsign clear` returns to nickname detection. Enable **Guild Members
+Intent** in the Developer Portal for nickname scanning. `DORC_CALLSIGNS` can still supply extra
+callsigns that are not tied to a server member.
+
+Slash commands sync globally by default, and Discord may take time to show
+global commands. For immediate availability in one server, set
+`DISCORD_GUILD_ID` to that server's ID; the bot will sync commands to that
+server at startup. The bot also logs the number of commands synced.
 
 ## Configure Discord
 
 Create a bot in the [Discord Developer Portal](https://discord.com/developers/applications).
 When generating its invite URL, include the `bot` and `applications.commands`
 scopes. The bot needs permission to view channels, send messages, and embed
-links (KISSChat posts arrive as embeds). Enable
-Message Content Intent in the Bot settings only if you want to keep using the
-legacy `!` commands.
+links (KISSChat posts arrive as embeds). Enable **Guild Members Intent** in the
+Bot settings for `/spots` nickname scanning. Enable **Message Content Intent**
+only if you want to keep using the legacy `!` commands.
 
 Slash commands are registered globally at startup. Discord may take a little
 while to display newly registered global commands.
