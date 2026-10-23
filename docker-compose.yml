@@ -1,8 +1,8 @@
-version: '3'
 services:
   dorcbot:
     image: ghcr.io/tcarwash/dorcbot
     build:
       context: .
-    volumes:
-      - ./dorcbot/.env:/dorcbot/.env
+    env_file:
+      - ./dorcbot/.env
+    restart: unless-stopped

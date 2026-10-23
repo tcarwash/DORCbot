@@ -6,20 +6,38 @@ from dotenv import load_dotenv
 from tabulate import tabulate
 from xml.etree import ElementTree
 import asyncio
-import shared
-import kc2g
+import logging
+from pathlib import Path
+from . import kc2g, shared
 import xmltodict
 
-load_dotenv()
+load_dotenv(Path(__file__).with_name(".env"))
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger("dorcbot")
 
 TOKEN = os.environ.get("TOKEN")
 QRZ_API_USER = os.environ.get("QRZ_API_USER")
 QRZ_API_PASS = os.environ.get("QRZ_API_PASS")
-QRZCALLSIGNSAMPLE = "qrzcallsignsample.xml"
+QRZCALLSIGNSAMPLE = Path(__file__).with_name("qrzcallsignsample.xml")
 
-cannedQRZ = QRZ_API_USER is None
+cannedQRZ = not QRZ_API_USER or not QRZ_API_PASS
 
-client = discord.Client()
+intents = discord.Intents.default()
+# Enable the privileged gateway intent only when legacy prefix commands are
+# requested. Slash commands work without Message Content access.
+intents.message_content = os.environ.get("ENABLE_PREFIX_COMMANDS", "false").lower() in {
+    "1", "true", "yes", "on"
+}
+client = discord.Client(intents=intents)
+tree = discord.app_commands.CommandTree(client)
+
+
+@client.event
+async def setup_hook():
+    await tree.sync()
 
 # Command map & help columns
 COMMANDMAP_FUNC = 0
@@ -91,12 +109,16 @@ def calldata(callsign):
         callsign = callsign.split(";")[0]
         pref = "{http://xmldata.qrz.com}"
         login = requests.get(
-            f"https://xmldata.qrz.com/xml/current/?username={QRZ_API_USER};password={QRZ_API_PASS};agent=q5.0"
+            "https://xmldata.qrz.com/xml/current/",
+            params={"username": QRZ_API_USER, "password": QRZ_API_PASS, "agent": "DORCbot"},
+            timeout=15,
         )
         key = ElementTree.fromstring(login.content)[0][0].text
         resp = ElementTree.fromstring(
             requests.get(
-                f"https://xmldata.qrz.com/xml/current/?s={key};callsign={callsign}"
+                "https://xmldata.qrz.com/xml/current/",
+                params={"s": key, "callsign": callsign},
+                timeout=15,
             ).content
         )
         data = resp.find(pref + "Callsign")
@@ -109,16 +131,22 @@ def calldata(callsign):
 
 
 def dxcc(query):
+    if cannedQRZ:
+        return None
     query = query.split(";")[0].upper()  # allow one parameter only
     pref = "{http://xmldata.qrz.com}"
     login = requests.get(
-        f"https://xmldata.qrz.com/xml/current/?username={QRZ_API_USER};password={QRZ_API_PASS};agent=q5.0"
+        "https://xmldata.qrz.com/xml/current/",
+        params={"username": QRZ_API_USER, "password": QRZ_API_PASS, "agent": "DORCbot"},
+        timeout=15,
     )
 
     key = ElementTree.fromstring(login.content)[0][0].text
     resp = ElementTree.fromstring(
         requests.get(
-            f"https://xmldata.qrz.com/xml/current/?s={key};dxcc={query}"
+            "https://xmldata.qrz.com/xml/current/",
+            params={"s": key, "dxcc": query},
+            timeout=15,
         ).content
     )
     data = resp.find(pref + "DXCC")
@@ -168,7 +196,7 @@ def get_calldata(payload, callsign, *args):
 
 
 def get_spots(payload, *args):
-    spots = requests.get("https://dorc-stats.ag7su.com/data/5").json()
+    spots = requests.get("https://dorc-stats.ag7su.com/data/5", timeout=15).json()
     payload.content = "Most recently spotted DORCs:\n\n"
     tab = []
     header = ["Call", "freq.", "mode", "time"]
@@ -190,7 +218,7 @@ def get_spots(payload, *args):
 
 def get_solar(payload, *args):
     payload.content = "Solar Indices (courtesy of hamqsl.com):\n\n"
-    solarcontent = requests.get("https://joshmathis.com/dorc/solarxml.xml")
+    solarcontent = requests.get("https://joshmathis.com/dorc/solarxml.xml", timeout=15)
     tree = ElementTree.fromstring(solarcontent.content).find("./solardata")
     tab = []
     header = ["As of", "A", "K", "SFI"]
@@ -337,6 +365,53 @@ commandmap = {
 }
 
 
+async def send_command_result(interaction, function, query=""):
+    """Run a blocking data lookup away from Discord's event loop."""
+    payload = Payload()
+    payload.author = interaction.user
+    try:
+        payload = await asyncio.to_thread(function, payload, query)
+        await interaction.response.send_message(**payload.send())
+    except Exception:
+        # Keep service details and credentials out of public Discord messages.
+        logger.exception("Slash command %s failed", function.__name__)
+        message = "That lookup failed. Please try again in a moment."
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
+
+
+@tree.command(name="spots", description="Show the five latest DORC spots")
+async def slash_spots(interaction: discord.Interaction):
+    await send_command_result(interaction, get_spots)
+
+
+@tree.command(name="solar", description="Show current solar conditions")
+async def slash_solar(interaction: discord.Interaction):
+    await send_command_result(interaction, get_solar)
+
+
+@tree.command(name="call", description="Look up a callsign on QRZ")
+async def slash_call(interaction: discord.Interaction, callsign: str):
+    await send_command_result(interaction, get_calldata, callsign)
+
+
+@tree.command(name="dxcc", description="Look up a DXCC entity on QRZ")
+async def slash_dxcc(interaction: discord.Interaction, query: str):
+    await send_command_result(interaction, get_dxcc, query)
+
+
+@tree.command(name="muf", description="Get the MUF between two grids or callsigns")
+async def slash_muf(interaction: discord.Interaction, from_locator: str, to_locator: str):
+    await send_command_result(interaction, get_muf, f"{from_locator} {to_locator}")
+
+
+@tree.command(name="help", description="Show DORCbot commands")
+async def slash_help(interaction: discord.Interaction, command: str = ""):
+    await send_command_result(interaction, get_help, command)
+
+
 @client.event
 async def on_ready():
     print(f"{client.user} has connected to Discord!")
@@ -359,7 +434,13 @@ async def on_message(message):
                     "Unsupported command. Try asking for !help instead."
                 )
             else:
-                payload = func[0](payload, command.group(2))
+                try:
+                    payload = await asyncio.to_thread(
+                        func[0], payload, command.group(2)
+                    )
+                except Exception:
+                    logger.exception("Prefix command %s failed", command.group(1))
+                    payload = error("That lookup failed. Please try again in a moment.")
         outgoing = await message.channel.send(**payload.send())
 
         def wrapper(outgoing):
@@ -387,4 +468,6 @@ async def on_message(message):
 
 
 if __name__ == "__main__":
+    if not TOKEN:
+        raise SystemExit("TOKEN is required; configure dorcbot/.env or the environment")
     client.run(TOKEN)
